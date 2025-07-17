@@ -4,7 +4,7 @@ module "health_check" {
   method = "GET"
   url    = "http://host.docker.internal:15060/engine-worker-api/health-check"
 
-  expect = {
+  expect {
     status = 200
   }
 }
