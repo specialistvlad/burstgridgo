@@ -10,18 +10,13 @@ This project started from a real moment of frustration.
 
 I just needed to simulate a realistic user workflow — one that uses a mock JWT token, communicates with a backend over Socket.IO, uploads files to S3, tracks progress events, and waits for a result — and suddenly every existing tool made it harder than it should be.
 
-On top of all that, I was also looking for a meaningful way to finally learn Go — and this project felt like the perfect blend of practical need and curiosity.
-
 I tried **k6** — great branding, solid Go engine, and scripting in JavaScript. But it couldn’t handle Socket.IO out of the box. I had to either reimplement everything manually in JavaScript or compile in a community extension. For a fast start, it was just too much.
 
 Then I tried **Artillery** — also very capable. But it pushed me toward a cloud-based workflow I didn’t want, and its config format mixed declarative and imperative code in a way that felt awkward and hard to reason about.
 
 I want to be clear: **these are well-crafted tools, professionally built and maintained**. But they didn’t give me the flexibility I needed for a quick, focused, extensible solution.
 
-**burstgridgo** is my answer to that gap. I wanted a tool that:
-- Embraces declarative structure without boxing you in
-- Runs anywhere — locally or in Docker — with zero friction
-- Makes it dead simple to add new protocols or custom logic, without fighting the framework
+On top of all that, I was also looking for a meaningful way to finally learn Go — and this project felt like the perfect blend of practical need and curiosity.
 
 ---
 
