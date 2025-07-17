@@ -50,7 +50,8 @@ func main() {
 					fmt.Println("  Failed to decode modules:", diags.Error())
 				} else {
 					for _, m := range content.Modules {
-						fmt.Println("  Found module:", m.Name)
+						fmt.Println("  Found module:", m.Runner)
+						// engine.ExecuteModule(m)
 					}
 
 					// Output the whole config in JSON format
