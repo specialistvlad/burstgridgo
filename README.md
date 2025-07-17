@@ -1,7 +1,6 @@
 # burstgridgo
 
-A declarative, modular, developer-first load testing tool built in Go.  
-Simulate real-world user workflows across custom protocols — with concurrency at scale.
+A Go-native, composable load testing tool for real-world, protocol-aware workflows.
 
 ---
 
@@ -28,9 +27,11 @@ I want to be clear: **these are well-crafted tools, professionally built and mai
 
 ## 🧑‍💻 Getting Involved
 
-This project started as a personal learning journey — but I’m building it to be useful for others too.
+What began as a personal learning journey is now growing into something I hope will be useful to others.
 
-Have ideas, feedback, or protocol needs I haven’t thought of? I’d love to hear from you.
+If you're a developer who enjoys clean abstractions, concurrency, or just hates fighting tooling when you want to ship something fast, you're very welcome here.
+
+Have ideas, feedback, or protocol needs I haven’t thought of? I’d love to hear from you. Feel free to open an issue, start a discussion, or just say hi.
 
 Even if the code is still green, the vision is clear — and collaboration makes it better.
 
@@ -48,31 +49,31 @@ Even if the code is still green, the vision is clear — and collaboration makes
 
 ## ⚙️ What burstgridgo Is (and Isn’t)
 
-✅ A framework for simulating **real user flows**  
-✅ A developer-oriented platform to load test **anything with a protocol**
-✅ A tool to define **parallel, branching, dependent workflows**  
+✅ A framework for simulating **real user flows**.  
+✅ A developer-oriented platform to load test **anything with a protocol**.  
+✅ A tool to define **parallel, branching, dependent workflows**.  
 
-❌ Not just an HTTP benchmarker  
-❌ Not a GUI-driven enterprise suite  
-❌ Not finished — this is on concept stage and Go learning journey
-
----
-
-## 📦 Example Configuration (on concept stage)
-
-Add me
+❌ Not just an HTTP benchmarker.  
+❌ Not a GUI-driven enterprise suite.  
+❌ Not finished — this is at the concept stage and part of my journey learning Go.
 
 ---
 
-## 🧱 Architecture (on concept stage)
+## 📦 Example Configuration (at the concept stage)
 
-Add me
+_TODO: This section will outline how configuration files are structured and how a scenario is expressed declaratively._
 
 ---
 
-## 🧭 Roadmap (on concept stage)
+## 🧱 Architecture (at the concept stage)
 
-Add me
+_TODO: This section will describe the internal architecture — runners, module graph execution, and core engine._
+
+---
+
+## 🧭 Roadmap (at the concept stage)
+
+_TODO: This section will track the development milestones, MVP features, and upcoming ideas._
 
 ---
 
