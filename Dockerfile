@@ -7,7 +7,7 @@
 # =================================================================
 # Global Build Arguments
 # =================================================================
-ARG GO_VERSION=1.24.5
+ARG GO_VERSION=alpine3.22@sha256:daae04ebad0c21149979cd8e9db38f565ecefd8547cf4a591240dc1972cf1399
 ARG TARGETPLATFORM=linux/amd64
 # Metadata ARGs are passed in from the CI/CD pipeline for a single source of truth
 ARG VERSION
@@ -19,7 +19,7 @@ ARG LICENSE="MIT"
 # =================================================================
 # Builder Stage
 # =================================================================
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine3.20@sha256:d9bde7c9e377f3e498c36004523315573489ce4c949c59508d55c703c0049090 AS builder
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS builder
 
 # TARGETOS and TARGETARCH are automatically supplied by buildx via TARGETPLATFORM
 ARG TARGETOS
@@ -57,7 +57,7 @@ ARG SOURCE_URL
 ARG LICENSE
 
 # Use the 'cc' variant of distroless to include curl for a robust healthcheck.
-FROM gcr.io/distroless/cc-debian12@sha256:a8ac44336034237c95a09c3132e4242d59d182a4505c5579f3cec3a63447332c AS prod
+FROM gcr.io/distroless/cc-debian12 AS prod
 
 LABEL org.opencontainers.image.created=$BUILD_DATE \
     org.opencontainers.image.version="${VERSION}" \
@@ -78,34 +78,11 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/burstgridgo"]
 
 # =================================================================
-# Debug Stage
-# =================================================================
-FROM debian:12-slim@sha256:637774a44f603c14a24f114b78e4a77953259837775551392686121f6a1936c9 AS debug
-
-ARG UID=10001
-RUN groupadd --system --gid ${UID} appgroup && \
-    useradd --system --uid ${UID} --gid appgroup appuser
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl procps strace lsof \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV APP_PORT=8080
-EXPOSE 8080
-
-COPY --from=builder --chown=appuser:appgroup /out/burstgridgo /usr/local/bin/burstgridgo
-USER appuser
-
-# Healthcheck is now identical to production.
-HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl --fail http://localhost:${APP_PORT}/health || exit 1
-
-ENTRYPOINT ["/usr/local/bin/burstgridgo"]
-
-# =================================================================
 # Development Stage
 # =================================================================
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine3.20@sha256:d9bde7c9e377f3e498c36004523315573489ce4c949c59508d55c703c0049090 AS dev
+# This stage is intentionally locked to the build host's architecture ($BUILDPLATFORM)
+# for performance, as emulating other platforms for development is often too slow.
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS dev
 
 ARG UID=10002
 RUN adduser -D -u ${UID} devuser
@@ -116,8 +93,14 @@ WORKDIR /app
 ENV APP_PORT=8080
 EXPOSE 8080
 
+# This stage pre-installs dependencies and tools. The source code is NOT
+# copied into the image; it should be mounted as a volume during runtime.
+# This is the standard pattern for enabling live-reloading.
 COPY --chown=devuser:devuser go.mod go.sum ./
+
 RUN go mod download && \
-    go install github.com/cosmtrek/air@latest
+    go install github.com/air-verse/air@latest
+
+COPY --chown=devuser:devuser .air.toml ./
 
 ENTRYPOINT ["air"]
