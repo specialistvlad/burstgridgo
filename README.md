@@ -130,9 +130,11 @@ module "health_check" {
 
 This configuration generates the following execution graph (DAG), where health_check runs at the same time as login:
 
+```mermaid
 graph TD
     A[login] --> B[get_user_profile];
     C[health_check];
+```
 
 ## 🧑‍💻 Getting Involved
 
