@@ -25,8 +25,6 @@ build:
 
 .PHONY: prod
 prod: build
-	@docker image inspect $(IMAGE):$(VERSION) >/dev/null 2>&1 || \
-		make build
 	docker run --rm -p 8080:8080 $(IMAGE):$(VERSION)
 
 .PHONY: dev
@@ -37,5 +35,6 @@ dev:
 	docker run --rm -it \
 	-p 8080:8080 \
 	-v $(PWD):/app \
+	-u "$(id -u):$(id -g)" \
 	-w /app \
 	$(IMAGE)-dev
