@@ -3,7 +3,7 @@
 .gitignore
 .gitattributes
 
-# Documentation
+# Documentation and legal
 *.md
 LICENSE
 
@@ -12,8 +12,14 @@ LICENSE
 .idea/
 *.env
 local.*
+*.swp
+.DS_Store
+
+# Go build cache and modules
+/vendor/
+/pkg/mod/
+.cache/go-build/
 
 # Test files and build artifacts
 *_test.go
 /out/
-/vendor/
