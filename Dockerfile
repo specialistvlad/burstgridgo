@@ -13,7 +13,7 @@ ARG TARGETPLATFORM=linux/amd64
 ARG VERSION
 ARG GIT_COMMIT
 ARG BUILD_DATE
-ARG SOURCE_URL="https://github.com/vlad/burstgridgo"
+ARG SOURCE_URL="https://github.com/specialistvlad/burstgridgo"
 ARG LICENSE="MIT"
 
 # =================================================================
@@ -65,7 +65,7 @@ LABEL org.opencontainers.image.created=$BUILD_DATE \
     org.opencontainers.image.source="${SOURCE_URL}" \
     org.opencontainers.image.licenses="${LICENSE}"
 
-ENV APP_PORT=8080
+ENV BGGO_APP_PORT=8080
 EXPOSE 8080
 
 COPY --from=builder /out/burstgridgo /burstgridgo
@@ -91,7 +91,7 @@ RUN adduser -D -u ${UID} devuser
 USER devuser
 WORKDIR /app
 
-ENV APP_PORT=8080
+ENV BGGO_APP_PORT=8080
 EXPOSE 8080
 
 # This stage pre-installs dependencies and tools. The source code is NOT
