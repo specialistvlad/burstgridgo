@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/engine"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // State represents the execution state of a node in the graph.
@@ -25,9 +27,10 @@ type Node struct {
 	Deps       map[string]*Node // Nodes this node depends on
 	Dependents map[string]*Node // Nodes that depend on this one
 
-	State State
-	Error error
-	mu    sync.RWMutex
+	State  State
+	Error  error
+	Output cty.Value // Stores the output of the executed module
+	mu     sync.RWMutex
 }
 
 // Graph is the collection of all nodes.
@@ -55,20 +58,45 @@ func NewGraph(modules []*engine.Module) (*Graph, error) {
 		}
 	}
 
-	// Second pass: link dependencies
+	// Second pass: link dependencies (explicit and implicit)
 	for _, node := range graph.Nodes {
+		// 1. Explicit dependencies from "depends_on"
 		for _, depName := range node.Module.DependsOn {
 			depNode, ok := graph.Nodes[depName]
 			if !ok {
 				return nil, fmt.Errorf("module '%s' depends on non-existent module '%s'", node.Name, depName)
 			}
-			// Link them
 			node.Deps[depName] = depNode
 			depNode.Dependents[node.Name] = node
 		}
+
+		// 2. Implicit dependencies from HCL variable references.
+		// Use JustAttributes to analyze expressions without full schema validation.
+		attrs, diags := node.Module.Body.JustAttributes()
+		if diags.HasErrors() {
+			return nil, diags
+		}
+
+		for _, attr := range attrs {
+			vars := attr.Expr.Variables()
+			for _, v := range vars {
+				if len(v) > 1 && v.RootName() == "module" {
+					depName := v[1].(hcl.TraverseAttr).Name
+					depNode, ok := graph.Nodes[depName]
+					if !ok {
+						return nil, fmt.Errorf("module '%s' refers to non-existent module '%s'", node.Name, depName)
+					}
+					// Link them if not already linked
+					if _, exists := node.Deps[depName]; !exists {
+						node.Deps[depName] = depNode
+						depNode.Dependents[node.Name] = node
+					}
+				}
+			}
+		}
 	}
 
-	// TODO: Add cycle detection here. For now, we assume a valid DAG.
+	// TODO: Add cycle detection here.
 
 	return graph, nil
 }

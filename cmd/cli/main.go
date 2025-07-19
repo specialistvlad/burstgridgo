@@ -6,11 +6,13 @@ import (
 
 	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/engine"
+	_ "github.com/vk/burstgridgo/modules/env_vars"
 	_ "github.com/vk/burstgridgo/modules/http_request"
+	_ "github.com/vk/burstgridgo/modules/print"
 )
 
 func main() {
-	folder := flag.String("folder", "examples", "folder path to scan for .hcl files")
+	folder := flag.String("folder", "examples/implicit-deps/", "folder path to scan for .hcl files")
 	flag.Parse()
 
 	// 1. Find all HCL files.

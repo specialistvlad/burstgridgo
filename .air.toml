@@ -10,5 +10,5 @@ bin = "./.tmp/main"
 # Directories to ignore
 exclude_dir = [".tmp", "vendor"]
 # Trigger a build on any file change
-include_ext = ["go"]
+include_ext = ["go", "hcl"]
 log = "build-errors.log"

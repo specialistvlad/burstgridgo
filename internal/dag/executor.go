@@ -4,7 +4,9 @@ import (
 	"log"
 	"sync"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/engine"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Executor runs the tasks in a graph.
@@ -32,7 +34,7 @@ func (e *Executor) Run() {
 
 	e.wg.Add(len(e.Graph.Nodes))
 
-	// Start worker goroutines. Let's start a few.
+	// Start worker goroutines.
 	for i := 0; i < 4; i++ {
 		go e.worker(readyChan)
 	}
@@ -48,7 +50,6 @@ func (e *Executor) worker(readyChan chan *Node) {
 		// After execution, check dependents to see if they are now ready.
 		e.nodeMutex.Lock()
 		for _, dependent := range node.Dependents {
-			// Check if all dependencies for the dependent node are done.
 			if e.areDepsMet(dependent) {
 				readyChan <- dependent
 			}
@@ -65,9 +66,13 @@ func (e *Executor) executeNode(node *Node) {
 	node.State = Running
 	node.mu.Unlock()
 
-	// Look up the runner and execute it.
+	// 1. Build the evaluation context from completed dependencies.
+	ctx := e.buildEvalContext(node)
+
+	// 2. Look up the runner and execute it.
 	if runner, ok := engine.Registry[node.Module.Runner]; ok {
-		if err := runner.Run(*node.Module); err != nil {
+		output, err := runner.Run(*node.Module, ctx)
+		if err != nil {
 			log.Printf("    ❗️ Error executing module '%s': %v", node.Name, err)
 			node.mu.Lock()
 			node.State = Failed
@@ -75,6 +80,10 @@ func (e *Executor) executeNode(node *Node) {
 			node.mu.Unlock()
 			return // Don't trigger dependents if this node failed.
 		}
+		// Store the output on the node.
+		node.mu.Lock()
+		node.Output = output
+		node.mu.Unlock()
 	} else {
 		log.Printf("    ❓ Unknown runner type '%s' for module '%s'", node.Module.Runner, node.Name)
 		node.mu.Lock()
@@ -100,4 +109,24 @@ func (e *Executor) areDepsMet(node *Node) bool {
 		}
 	}
 	return true
+}
+
+// buildEvalContext creates the HCL evaluation context for a node.
+func (e *Executor) buildEvalContext(node *Node) *hcl.EvalContext {
+	vars := make(map[string]cty.Value)
+	moduleOutputs := make(map[string]cty.Value)
+
+	// Populate with outputs from dependencies
+	for depName, depNode := range node.Deps {
+		depNode.mu.RLock()
+		moduleOutputs[depName] = depNode.Output
+		depNode.mu.RUnlock()
+	}
+
+	// Structure it for HCL: {"module": {"dep_name": ...}}
+	vars["module"] = cty.ObjectVal(moduleOutputs)
+
+	return &hcl.EvalContext{
+		Variables: vars,
+	}
 }
