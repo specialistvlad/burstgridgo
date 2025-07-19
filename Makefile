@@ -1,7 +1,6 @@
 # Makefile for building and running the burstgridgo application using Docker
 IMAGE := burstgridgo
 VERSION := $(shell git describe --tags --always)
-# Use the last commit's timestamp for a stable, cache-friendly build date
 BUILD_DATE := $(shell git log -1 --pretty=%cI)
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 
@@ -15,8 +14,20 @@ else ifneq (,$(filter $(ARCH),aarch64 arm64))
   PLATFORM ?= linux/arm64
 endif
 
-.PHONY: build
-build:
+# Set the default target to 'help'
+.DEFAULT_GOAL := help
+
+.PHONY: help build prod dev
+
+help: ## Show this help message.
+	@echo "Usage: make [target] [options]"
+	@echo ""
+	@echo "Targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' | \
+		sed 's/|/\n                 /g'
+
+build: ## Build a production-ready Docker image.|   Creates tags for both version and 'latest'.
 	docker buildx build \
 	  --target prod \
 	  --platform=$(PLATFORM) \
@@ -28,20 +39,20 @@ build:
 	  -t $(IMAGE):latest \
 	  .
 
-
-.PHONY: prod
-prod: build
+prod: build ## Run the latest production image.|   Note: This default command does not mount a grid.
 	docker run --rm -p 8080:8080 $(IMAGE):$(VERSION)
 
-.PHONY: dev
-dev:
+dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (Required) Path to HCL file.|     e="<vars>"    (Optional) Env vars to pass.|   Example:|     make dev grid=examples/dev.hcl e="API_KEY=secret"
+	$(eval DOCKER_FLAGS := $(foreach pair,$(e),-e "$(pair)"))
 	docker build \
 	  --target dev \
 	  -t $(IMAGE)-dev .
+	@echo "Running dev container..."
 	docker run --rm -it \
 	-p 8080:8080 \
 	-v $(PWD):/app \
+	$(DOCKER_FLAGS) \
 	-u "$(id -u):$(id -g)" \
 	-w /app \
 	$(IMAGE)-dev \
-	$(grid) # Pass the grid variable to the container
+	$(grid)

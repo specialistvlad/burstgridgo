@@ -21,7 +21,7 @@ func (r *HTTPRequestRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Va
 	log.Printf("    ⚙️  Executing http_request runner for module '%s'...", mod.Name)
 
 	// 1. Decode the specific config from the module's body.
-	config, err := DecodeConfig(mod.Body)
+	config, err := DecodeConfig(mod.Body, ctx)
 	if err != nil {
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to decode config for module %s: %w", mod.Name, err)
 	}
@@ -79,10 +79,9 @@ type Config struct {
 	Expect *HTTPExpect `hcl:"expect,block"`
 }
 
-func DecodeConfig(body hcl.Body) (*Config, error) {
+func DecodeConfig(body hcl.Body, ctx *hcl.EvalContext) (*Config, error) {
 	var config Config
-	// This module doesn't use inputs from other modules, so context is nil.
-	diags := gohcl.DecodeBody(body, nil, &config)
+	diags := gohcl.DecodeBody(body, ctx, &config)
 	if diags.HasErrors() {
 		return nil, diags
 	}

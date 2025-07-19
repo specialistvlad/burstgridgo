@@ -1,11 +1,11 @@
+# Read all environment variables
 module "all_env_vars" {
   runner = "env_vars"
 }
 
+
+# Display all environment variables
 module "display_envs" {
   runner = "print"
-
-  # This expression creates an implicit dependency
-  # on the "all_env_vars" module.
   input = module.all_env_vars.all
 }
