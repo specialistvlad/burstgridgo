@@ -21,7 +21,10 @@ build:
 	  --build-arg VERSION=$(VERSION) \
 	  --build-arg GIT_COMMIT=$(GIT_COMMIT) \
 	  --build-arg BUILD_DATE=$(BUILD_DATE) \
-	  -t $(IMAGE):$(VERSION) .
+	  -t $(IMAGE):$(VERSION) \
+	  -t $(IMAGE):latest \
+	  .
+
 
 .PHONY: prod
 prod: build
