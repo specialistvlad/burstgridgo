@@ -132,8 +132,13 @@ This configuration generates the following execution graph (DAG), where health_c
 
 ```mermaid
 graph TD
+    start --> A[login];
+    start --> C[health_check];
     A[login] --> B[get_user_profile];
-    C[health_check];
+    C[health_check] --> end;
+    B[get_user_profile] --> end;
+    start((Start))
+    end((End))
 ```
 
 ## 🧑‍💻 Getting Involved
