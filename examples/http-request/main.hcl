@@ -1,13 +1,13 @@
-# module "first_request" {
-#   runner = "http-request"
-#   url    = "https://httpbin.org/get"
-# }
+module "first_request" {
+  runner = "http-request"
+  url    = "https://httpbin.org/get"
+}
 
-# module "second_request" {
-#   runner     = "http-request"
-#   url        = "https://httpbin.org/delay/1" // This will take 1 second
-#   depends_on = ["first_request"]
-# }
+module "second_request" {
+  runner     = "http-request"
+  url        = "https://httpbin.org/delay/1" // This will take 1 second
+  depends_on = ["first_request"]
+}
 
 # module "third_request" {
 #   runner     = "http-request"

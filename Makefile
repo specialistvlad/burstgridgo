@@ -5,6 +5,9 @@ VERSION := $(shell git describe --tags --always)
 BUILD_DATE := $(shell git log -1 --pretty=%cI)
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 
+# Define a default grid path. The "?=" means it can be overridden from the command line.
+grid ?= examples/implicit-deps
+
 ARCH := $(shell uname -m)
 ifeq ($(ARCH),x86_64)
   PLATFORM ?= linux/amd64
@@ -40,4 +43,5 @@ dev:
 	-v $(PWD):/app \
 	-u "$(id -u):$(id -g)" \
 	-w /app \
-	$(IMAGE)-dev
+	$(IMAGE)-dev \
+	$(grid) # Pass the grid variable to the container
