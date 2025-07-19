@@ -1,7 +1,19 @@
-.dockerignore
+# Git and repository files
 .git
-tmp
-out
-vendor
-*.log
-*.cache
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+LICENSE
+
+# Local development and editor configuration
+.vscode/
+.idea/
+*.env
+local.*
+
+# Test files and build artifacts
+*_test.go
+/out/
+/vendor/
