@@ -5,8 +5,8 @@ VERSION := $(shell git describe --tags --always)
 BUILD_DATE := $(shell git log -1 --pretty=%cI)
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
 
-# Define a default grid path. The "?=" means it can be overridden from the command line.
-grid ?= examples/implicit-deps
+# The user must now provide the grid path.
+grid ?=
 
 ARCH := $(shell uname -m)
 ifeq ($(ARCH),x86_64)
