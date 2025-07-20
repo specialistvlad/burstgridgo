@@ -3,6 +3,7 @@
 package socketio
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zishang520/engine.io-client-go/transports"
 	"github.com/zishang520/engine.io/v2/events"
 	"github.com/zishang520/engine.io/v2/types"
 	"github.com/zishang520/socket.io-client-go/socket"
@@ -66,7 +68,6 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 	}
 
 	done := make(chan error, 1)
-	opts := socket.DefaultOptions()
 
 	// Parse the URL to extract the base URL and path
 	parsedURL, err := url.Parse(config.URL)
@@ -75,11 +76,26 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
-	socketPath := parsedURL.Path
-
 	log.Printf("     dialing %s...", baseURL)
 
-	opts.SetPath(socketPath)
+	// Create default client options.
+	opts := socket.DefaultOptions()
+	opts.SetPath(parsedURL.Path)
+
+	if config.InsecureSkipVerify {
+		log.Printf("      ⚠️  Skipping TLS certificate verification for module '%s'", mod.Name)
+		// Create a new TLS configuration that skips certificate verification.
+		// This is necessary for local development with self-signed certificates.
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: true,
+		}
+
+		opts.SetTLSClientConfig(tlsConfig)
+	}
+
+	// Explicitly set transport to WebSocket, as required for a 'wss://' connection.
+	opts.SetTransports(types.NewSet(transports.WebSocket))
+
 	manager := socket.NewManager(baseURL, opts)
 	namespace := "/"
 	if config.Namespace != "" {
