@@ -3,7 +3,6 @@
 package socketio
 
 import (
-	"crypto/tls"
 	"fmt"
 	"log"
 	"net/url"
@@ -13,8 +12,6 @@ import (
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
-	engineio "github.com/zishang520/engine.io-client-go/engine"
-	"github.com/zishang520/engine.io-client-go/transports"
 	"github.com/zishang520/engine.io/v2/events"
 	"github.com/zishang520/engine.io/v2/types"
 	"github.com/zishang520/socket.io-client-go/socket"
@@ -69,21 +66,7 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 	}
 
 	done := make(chan error, 1)
-
-	// --- DEFINITIVE OPTIONS CREATION ---
 	opts := socket.DefaultOptions()
-
-	engineOpts := engineio.DefaultSocketOptions()
-	engineOpts.SetTransports(types.NewSet(transports.Polling, transports.WebSocket))
-
-	if config.InsecureSkipVerify {
-		log.Printf("      ⚠️  Skipping TLS certificate verification for module '%s'", mod.Name)
-
-		// The correct method is SetTLSClientConfig, with "Client" in the name.
-		engineOpts.SetTLSClientConfig(&tls.Config{
-			InsecureSkipVerify: true,
-		})
-	}
 
 	// Parse the URL to extract the base URL and path
 	parsedURL, err := url.Parse(config.URL)
