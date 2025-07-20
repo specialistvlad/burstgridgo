@@ -73,7 +73,7 @@ func (e *Executor) executeNode(node *Node) {
 	if runner, ok := engine.Registry[node.Module.Runner]; ok {
 		output, err := runner.Run(*node.Module, ctx)
 		if err != nil {
-			log.Printf("    ❗️ Error executing module '%s': %v", node.Name, err)
+			log.Fatalf("    ❗️ Error executing module '%s': %v", node.Name, err)
 			node.mu.Lock()
 			node.State = Failed
 			node.Error = err
@@ -85,7 +85,7 @@ func (e *Executor) executeNode(node *Node) {
 		node.Output = output
 		node.mu.Unlock()
 	} else {
-		log.Printf("    ❓ Unknown runner type '%s' for module '%s'", node.Module.Runner, node.Name)
+		log.Fatalf("    ❓ Unknown runner type '%s' for module '%s'", node.Module.Runner, node.Name)
 		node.mu.Lock()
 		node.State = Failed
 		node.mu.Unlock()

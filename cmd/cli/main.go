@@ -11,6 +11,7 @@ import (
 	_ "github.com/vk/burstgridgo/modules/help"
 	_ "github.com/vk/burstgridgo/modules/http_request"
 	_ "github.com/vk/burstgridgo/modules/print"
+	_ "github.com/vk/burstgridgo/modules/socketio"
 )
 
 func main() {
