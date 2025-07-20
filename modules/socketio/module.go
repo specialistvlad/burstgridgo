@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net/url"
 	"time"
 
 	"github.com/hashicorp/hcl/v2"
@@ -71,7 +72,6 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 
 	// --- DEFINITIVE OPTIONS CREATION ---
 	opts := socket.DefaultOptions()
-	// opts.SetPath("/event-bridge/socket/socket.io/")
 
 	engineOpts := engineio.DefaultSocketOptions()
 	engineOpts.SetTransports(types.NewSet(transports.Polling, transports.WebSocket))
@@ -85,8 +85,19 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 		})
 	}
 
-	log.Printf("     dialing %s...", config.URL)
-	manager := socket.NewManager(config.URL, opts)
+	// Parse the URL to extract the base URL and path
+	parsedURL, err := url.Parse(config.URL)
+	if err != nil {
+		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to parse URL: %w", err)
+	}
+
+	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+	socketPath := parsedURL.Path
+
+	log.Printf("     dialing %s...", baseURL)
+
+	opts.SetPath(socketPath)
+	manager := socket.NewManager(baseURL, opts)
 	namespace := "/"
 	if config.Namespace != "" {
 		namespace = config.Namespace
