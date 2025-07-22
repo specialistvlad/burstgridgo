@@ -57,3 +57,11 @@ dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (R
 	-w /app \
 	$(IMAGE)-dev \
 	$(grid)
+
+# Add this with your other phony targets
+.PHONY: help build prod dev test
+
+# Add this target, for example after the 'help' target
+test: ## Run all tests with race detection.
+	@echo "Running tests..."
+	go test -v -race ./...

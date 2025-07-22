@@ -1,3 +1,5 @@
+// ./internal/dag/graph.go
+
 package dag
 
 import (
@@ -36,6 +38,43 @@ type Node struct {
 // Graph is the collection of all nodes.
 type Graph struct {
 	Nodes map[string]*Node
+}
+
+// detectCycles checks for circular dependencies in the graph using DFS.
+func (g *Graph) detectCycles() error {
+	visiting := make(map[string]bool) // Nodes currently in the recursion stack (gray set)
+	visited := make(map[string]bool)  // Nodes that have been fully processed (black set)
+
+	var visit func(node *Node) error
+	visit = func(node *Node) error {
+		visiting[node.Name] = true
+
+		for _, dep := range node.Deps {
+			if visiting[dep.Name] {
+				// Cycle detected!
+				return fmt.Errorf("cycle detected involving module '%s'", dep.Name)
+			}
+			if !visited[dep.Name] {
+				if err := visit(dep); err != nil {
+					return err
+				}
+			}
+		}
+
+		delete(visiting, node.Name)
+		visited[node.Name] = true
+		return nil
+	}
+
+	for _, node := range g.Nodes {
+		if !visited[node.Name] {
+			if err := visit(node); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // NewGraph builds a dependency graph from a flat list of modules.
@@ -96,7 +135,10 @@ func NewGraph(modules []*engine.Module) (*Graph, error) {
 		}
 	}
 
-	// TODO: Add cycle detection here.
+	// Check for cycles in the graph.
+	if err := graph.detectCycles(); err != nil {
+		return nil, fmt.Errorf("error validating dependency graph: %w", err)
+	}
 
 	return graph, nil
 }

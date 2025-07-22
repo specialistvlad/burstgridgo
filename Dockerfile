@@ -37,6 +37,9 @@ COPY ./cmd/ ./cmd/
 COPY ./internal/ ./internal/
 COPY ./modules/ ./modules/
 
+# Run tests as a separate step. The build will fail if any tests fail.
+RUN go test -race ./...
+
 # Build a true cross-platform binary using GOOS and GOARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags=" \
