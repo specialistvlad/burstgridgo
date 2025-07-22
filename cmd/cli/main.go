@@ -12,6 +12,7 @@ import (
 	_ "github.com/vk/burstgridgo/modules/help"
 	_ "github.com/vk/burstgridgo/modules/http_request"
 	_ "github.com/vk/burstgridgo/modules/print"
+	_ "github.com/vk/burstgridgo/modules/s3"
 	_ "github.com/vk/burstgridgo/modules/socketio"
 )
 
@@ -39,7 +40,7 @@ func main() {
 		if len(hclFiles) > 0 {
 			log.Printf("Found %d HCL file(s) to process from '%s':", len(hclFiles), cliOpts.GridPath)
 			for _, file := range hclFiles {
-				log.Printf("  • %s", file)
+				log.Printf("   • %s", file)
 			}
 
 			// Parse all files to get a flat list of modules.

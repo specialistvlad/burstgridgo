@@ -14,7 +14,6 @@ import (
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zishang520/engine.io-client-go/transports"
-	"github.com/zishang520/engine.io/v2/events"
 	"github.com/zishang520/engine.io/v2/types"
 	"github.com/zishang520/socket.io-client-go/socket"
 )
@@ -32,8 +31,7 @@ type Config struct {
 	InsecureSkipVerify bool      `hcl:"insecure_skip_verify,optional"`
 }
 
-// ctyValueToInterface recursively converts a cty.Value to a standard Go interface{}
-// that can be marshaled to JSON by the socket.io library.
+// ctyValueToInterface recursively converts a cty.Value to a standard Go interface{} for emitting.
 func ctyValueToInterface(val cty.Value) (interface{}, error) {
 	if !val.IsKnown() || val.IsNull() {
 		return nil, nil
@@ -83,6 +81,44 @@ func ctyValueToInterface(val cty.Value) (interface{}, error) {
 	return nil, fmt.Errorf("unsupported cty.Type for conversion: %s", val.Type().FriendlyName())
 }
 
+// interfaceToCtyValue converts a generic Go interface{} from the socket library into a cty.Value.
+func interfaceToCtyValue(data interface{}) (cty.Value, error) {
+	if data == nil {
+		return cty.NullVal(cty.DynamicPseudoType), nil
+	}
+
+	switch v := data.(type) {
+	case string:
+		return cty.StringVal(v), nil
+	case float64:
+		return cty.NumberFloatVal(v), nil
+	case bool:
+		return cty.BoolVal(v), nil
+	case map[string]interface{}:
+		attrs := make(map[string]cty.Value)
+		for key, val := range v {
+			ctyVal, err := interfaceToCtyValue(val)
+			if err != nil {
+				return cty.NilVal, err
+			}
+			attrs[key] = ctyVal
+		}
+		return cty.ObjectVal(attrs), nil
+	case []interface{}:
+		elems := make([]cty.Value, 0, len(v))
+		for _, val := range v {
+			ctyVal, err := interfaceToCtyValue(val)
+			if err != nil {
+				return cty.NilVal, err
+			}
+			elems = append(elems, ctyVal)
+		}
+		return cty.TupleVal(elems), nil
+	default:
+		return cty.NilVal, fmt.Errorf("unsupported type for conversion to cty.Value: %T", v)
+	}
+}
+
 func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
 	log.Printf("    ⚙️  Executing socketio runner for module '%s'...", mod.Name)
 
@@ -100,33 +136,22 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 		log.Printf("    ⏱️ Timeout configured for '%s': %s", mod.Name, timeout)
 	}
 
-	done := make(chan error, 1)
+	done := make(chan interface{}, 1)
 
-	// Parse the URL to extract the base URL and path
 	parsedURL, err := url.Parse(config.URL)
 	if err != nil {
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to parse URL: %w", err)
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
-	log.Printf("     dialing %s...", baseURL)
+	log.Printf("    dialing %s...", baseURL)
 
-	// Create default client options.
 	opts := socket.DefaultOptions()
 	opts.SetPath(parsedURL.Path)
-
 	if config.InsecureSkipVerify {
-		log.Printf("      ⚠️  Skipping TLS certificate verification for module '%s'", mod.Name)
-		// Create a new TLS configuration that skips certificate verification.
-		// This is necessary for local development with self-signed certificates.
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: true,
-		}
-
-		opts.SetTLSClientConfig(tlsConfig)
+		log.Printf("        ⚠️  Skipping TLS certificate verification for module '%s'", mod.Name)
+		opts.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 	}
-
-	// Explicitly set transport to WebSocket, as required for a 'wss://' connection.
 	opts.SetTransports(types.NewSet(transports.WebSocket))
 
 	manager := socket.NewManager(baseURL, opts)
@@ -136,7 +161,6 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 	}
 	io := manager.Socket(namespace, opts)
 
-	// --- Define Event Handlers ---
 	io.On(types.EventName("connect"), func(...any) {
 		log.Printf("    🔌 Successfully connected to %s (namespace: %s, sid: %s)", config.URL, namespace, io.Id())
 		if config.EmitEvent != "" {
@@ -160,29 +184,36 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 		log.Printf("    🔌 Disconnected from %s, reason: %v", config.URL, reason)
 	})
 
-	io.OnAny(events.Listener(func(args ...any) {
-		if len(args) > 0 {
-			event, ok := args[0].(types.EventName)
-			if ok {
-				log.Printf("    📡 Received generic event: '%s' with data: %v", event, args[1:])
-			}
-		}
-	}))
-
 	io.On(types.EventName(config.OnEvent), func(data ...any) {
 		log.Printf("    ⬅️  Received SUCCESS event '%s' with data: %v", config.OnEvent, data)
-		done <- nil
+		// Convert the generic response data into a cty.Value.
+		if len(data) > 0 {
+			ctyVal, err := interfaceToCtyValue(data)
+			if err != nil {
+				done <- err
+				return
+			}
+			done <- ctyVal // Send the entire converted value on success.
+			return
+		}
+		done <- fmt.Errorf("success event received with no data")
 	})
 
-	// --- Wait for Completion or Timeout ---
 	select {
-	case err := <-done:
+	case result := <-done:
 		log.Printf("    🔚 Event loop finished for '%s', disconnecting...", mod.Name)
 		io.Disconnect()
-		if err != nil {
-			return cty.NullVal(cty.DynamicPseudoType), err
+		switch res := result.(type) {
+		case cty.Value: // This is our new success case.
+			// Return the result wrapped in an object with the key 'response_data'.
+			return cty.ObjectVal(map[string]cty.Value{
+				"response_data": res,
+			}), nil
+		case error: // This is a failure case.
+			return cty.NullVal(cty.DynamicPseudoType), res
+		default:
+			return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("unexpected result type from event handler")
 		}
-		return cty.NullVal(cty.DynamicPseudoType), nil
 	case <-time.After(timeout):
 		log.Printf("    ⌛️ Timed out waiting for event '%s' on module '%s'", config.OnEvent, mod.Name)
 		io.Disconnect()
