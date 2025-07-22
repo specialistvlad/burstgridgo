@@ -7,6 +7,7 @@ import (
 	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/engine"
+	"github.com/vk/burstgridgo/internal/healthcheck"
 	_ "github.com/vk/burstgridgo/modules/env_vars"
 	_ "github.com/vk/burstgridgo/modules/help"
 	_ "github.com/vk/burstgridgo/modules/http_request"
@@ -19,6 +20,11 @@ func main() {
 	cliOpts, err := config.Parse()
 	if err != nil {
 		log.Fatalf("Error parsing arguments: %v", err)
+	}
+
+	// Start the health check server if the port is configured.
+	if cliOpts.HealthcheckPort > 0 {
+		go healthcheck.StartServer(cliOpts.HealthcheckPort)
 	}
 
 	var allModules []*engine.Module

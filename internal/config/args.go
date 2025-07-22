@@ -6,7 +6,8 @@ import (
 
 // CLIOptions holds the configuration parsed from the command line.
 type CLIOptions struct {
-	GridPath string
+	GridPath        string
+	HealthcheckPort int
 }
 
 // Parse processes the command-line arguments and returns structured options.
@@ -14,6 +15,7 @@ func Parse() (*CLIOptions, error) {
 	// Define flags.
 	gridFlag := flag.String("grid", "", "Path to the grid file or directory.")
 	gFlag := flag.String("g", "", "Path to the grid file or directory (shorthand).")
+	healthPortFlag := flag.Int("healthcheck-port", 8080, "Port for the HTTP health check server. Set to 0 to disable.")
 
 	flag.Parse()
 
@@ -27,5 +29,8 @@ func Parse() (*CLIOptions, error) {
 		path = flag.Arg(0)
 	}
 
-	return &CLIOptions{GridPath: path}, nil
+	return &CLIOptions{
+		GridPath:        path,
+		HealthcheckPort: *healthPortFlag,
+	}, nil
 }

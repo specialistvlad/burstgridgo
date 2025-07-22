@@ -3,6 +3,7 @@ IMAGE := burstgridgo
 VERSION := $(shell git describe --tags --always)
 BUILD_DATE := $(shell git log -1 --pretty=%cI)
 GIT_COMMIT := $(shell git rev-parse --short HEAD)
+HEALTHCHECK_PORT := 28080
 
 # The user must now provide the grid path.
 grid ?=
@@ -40,7 +41,7 @@ build: ## Build a production-ready Docker image.|   Creates tags for both versio
 	  .
 
 prod: build ## Run the latest production image.|   Note: This default command does not mount a grid.
-	docker run --rm -p 8080:8080 $(IMAGE):$(VERSION)
+	docker run --rm -p $(HEALTHCHECK_PORT):8080 $(IMAGE):$(VERSION)
 
 dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (Required) Path to HCL file.|     e="<vars>"    (Optional) Env vars to pass.|   Example:|     make dev grid=examples/dev.hcl e="API_KEY=secret"
 	$(eval DOCKER_FLAGS := $(foreach pair,$(e),-e "$(pair)"))
@@ -49,7 +50,7 @@ dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (R
 	  -t $(IMAGE)-dev .
 	@echo "Running dev container..."
 	docker run --rm -it \
-	-p 8080:8080 \
+	-p $(HEALTHCHECK_PORT):8080 \
 	-v $(PWD):/app \
 	$(DOCKER_FLAGS) \
 	-u "$(id -u):$(id -g)" \
