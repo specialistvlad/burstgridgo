@@ -21,17 +21,29 @@ func main() {
 	// 1. Parse all CLI arguments and flags.
 	cliOpts, err := config.Parse()
 	if err != nil {
-		// Logger isn't set up yet, so use standard log here.
 		slog.Error("Failed to parse arguments", "error", err)
 		os.Exit(1)
 	}
 
 	// 2. Initialize the structured logger.
+	var level slog.Level
+	switch cliOpts.LogLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+
+	handlerOpts := &slog.HandlerOptions{Level: level}
 	var handler slog.Handler
 	if cliOpts.LogFormat == "json" {
-		handler = slog.NewJSONHandler(os.Stdout, nil)
+		handler = slog.NewJSONHandler(os.Stdout, handlerOpts)
 	} else {
-		handler = slog.NewTextHandler(os.Stdout, nil)
+		handler = slog.NewTextHandler(os.Stdout, handlerOpts)
 	}
 	slog.SetDefault(slog.New(handler))
 

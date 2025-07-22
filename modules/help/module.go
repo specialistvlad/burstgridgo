@@ -28,7 +28,6 @@ Usage:
 Arguments:
   GRID_PATH
     Path to a single .hcl file or a directory containing .hcl files.
-    If a directory is specified, it will be scanned recursively.
 
 Options:
   -g, --grid string
@@ -36,16 +35,19 @@ Options:
   
   --log-format string
     Log output format. Options: 'text' (default) or 'json'.
+
+  --log-level string
+    Set the logging level. Options: 'debug', 'info' (default), 'warn', 'error'.
   
   --healthcheck-port int
-    Port for the HTTP health check server. Set to 0 to disable. (default: 8080)
+    Port for the HTTP health check server. (default: 8080)
 
 Examples:
-  # Run all .hcl files in the 'signup_workflow' directory
-  burstgridgo ./grids/signup_workflow
+  # Run a grid with detailed debug logging
+  burstgridgo --log-level=debug ./grids/my_test.hcl
 
-  # Run a single grid file with JSON-formatted logs
-  burstgridgo --log-format=json ./grids/smoke_test.hcl
+  # Run with targeted verbose logs for the 'login' and 'upload' modules
+  BGGO_DEBUG_MODULES=login,upload burstgridgo --log-level=debug ./grids/my_test.hcl
 `
 	fmt.Println(helpText)
 
