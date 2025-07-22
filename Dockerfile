@@ -76,7 +76,7 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
     CMD ["curl", "--fail", "http://localhost:8080/health"]
 
 ENTRYPOINT ["/burstgridgo"]
-CMD ["/grid"]
+# CMD ["/grid/example.hcl"] override when run in production
 
 # =================================================================
 # Development Stage

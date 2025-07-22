@@ -3,7 +3,6 @@
 A Go-native, declarative, and composable load testing tool for simulating real-world, protocol-aware workflows using HCL.
 
 
-
 ## 🚀 Motivation
 
 This project started from a real moment of frustration. I just needed to simulate a realistic user workflow—one that uses a mock JWT token, communicates with a backend over Socket.IO, and uploads files to S3—and every existing tool made it harder than it should be.
