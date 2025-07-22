@@ -32,22 +32,55 @@ type Config struct {
 	InsecureSkipVerify bool      `hcl:"insecure_skip_verify,optional"`
 }
 
-// Helper to convert HCL cty.Value to a format the library can use.
-func convertCtyToInterface(val cty.Value) (interface{}, error) {
+// ctyValueToInterface recursively converts a cty.Value to a standard Go interface{}
+// that can be marshaled to JSON by the socket.io library.
+func ctyValueToInterface(val cty.Value) (interface{}, error) {
 	if !val.IsKnown() || val.IsNull() {
 		return nil, nil
 	}
-	switch val.Type() {
-	case cty.String:
-		return types.NewStringBufferString(val.AsString()), nil
-	case cty.Number:
-		f, _ := val.AsBigFloat().Float64()
-		return f, nil
-	case cty.Bool:
-		return val.True(), nil
-	default:
-		return nil, fmt.Errorf("unsupported type for emit_data: %s", val.Type().FriendlyName())
+
+	if val.Type().IsPrimitiveType() {
+		switch val.Type() {
+		case cty.String:
+			return val.AsString(), nil
+		case cty.Number:
+			f, _ := val.AsBigFloat().Float64()
+			return f, nil
+		case cty.Bool:
+			return val.True(), nil
+		default:
+			return nil, fmt.Errorf("unsupported primitive type: %s", val.Type().FriendlyName())
+		}
 	}
+
+	if val.Type().IsObjectType() || val.Type().IsMapType() {
+		out := make(map[string]interface{})
+		for it := val.ElementIterator(); it.Next(); {
+			k, v := it.Element()
+			keyStr := k.AsString()
+			valInterface, err := ctyValueToInterface(v)
+			if err != nil {
+				return nil, err
+			}
+			out[keyStr] = valInterface
+		}
+		return out, nil
+	}
+
+	if val.Type().IsTupleType() || val.Type().IsListType() {
+		var out []interface{}
+		for it := val.ElementIterator(); it.Next(); {
+			_, v := it.Element()
+			valInterface, err := ctyValueToInterface(v)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, valInterface)
+		}
+		return out, nil
+	}
+
+	return nil, fmt.Errorf("unsupported cty.Type for conversion: %s", val.Type().FriendlyName())
 }
 
 func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
@@ -107,12 +140,12 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 	io.On(types.EventName("connect"), func(...any) {
 		log.Printf("    🔌 Successfully connected to %s (namespace: %s, sid: %s)", config.URL, namespace, io.Id())
 		if config.EmitEvent != "" {
-			log.Printf("    ➡️  Emitting event '%s'", config.EmitEvent)
-			data, err := convertCtyToInterface(config.EmitData)
+			data, err := ctyValueToInterface(config.EmitData)
 			if err != nil {
 				done <- err
 				return
 			}
+			log.Printf("    ➡️  Emitting event '%s' with data: %+v", config.EmitEvent, data)
 			io.Emit(config.EmitEvent, data)
 		}
 	})
