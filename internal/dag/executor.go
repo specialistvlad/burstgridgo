@@ -1,6 +1,7 @@
 package dag
 
 import (
+	"fmt"
 	"log"
 	"sync"
 
@@ -58,7 +59,7 @@ func (e *Executor) worker(readyChan chan *Node) {
 	}
 }
 
-func (e *Executor) executeNode(node *Node) {
+func (e *Executor) executeNode(node *Node) error {
 	defer e.wg.Done()
 
 	log.Printf("  ▶️ Starting module '%s'...", node.Name)
@@ -70,32 +71,34 @@ func (e *Executor) executeNode(node *Node) {
 	ctx := e.buildEvalContext(node)
 
 	// 2. Look up the runner and execute it.
-	if runner, ok := engine.Registry[node.Module.Runner]; ok {
-		output, err := runner.Run(*node.Module, ctx)
-		if err != nil {
-			log.Fatalf("    ❗️ Error executing module '%s': %v", node.Name, err)
-			node.mu.Lock()
-			node.State = Failed
-			node.Error = err
-			node.mu.Unlock()
-			return // Don't trigger dependents if this node failed.
-		}
-		// Store the output on the node.
-		node.mu.Lock()
-		node.Output = output
-		node.mu.Unlock()
-	} else {
-		log.Fatalf("    ❓ Unknown runner type '%s' for module '%s'", node.Module.Runner, node.Name)
+	runner, ok := engine.Registry[node.Module.Runner]
+	if !ok {
+		err := fmt.Errorf("unknown runner type '%s' for module '%s'", node.Module.Runner, node.Name)
+		log.Printf("    ❗️ Error in module '%s': %v", node.Name, err)
 		node.mu.Lock()
 		node.State = Failed
+		node.Error = err
 		node.mu.Unlock()
-		return
+		return err
 	}
 
+	output, err := runner.Run(*node.Module, ctx)
+	if err != nil {
+		log.Printf("    ❗️ Error executing module '%s': %v", node.Name, err)
+		node.mu.Lock()
+		node.State = Failed
+		node.Error = err
+		node.mu.Unlock()
+		return err
+	}
+
+	// Store the output on the node.
 	node.mu.Lock()
+	node.Output = output
 	node.State = Done
 	node.mu.Unlock()
 	log.Printf("  ✅ Finished module '%s'.", node.Name)
+	return nil
 }
 
 // areDepsMet checks if all dependencies of a given node are in the Done state.
