@@ -8,6 +8,11 @@ HEALTHCHECK_PORT := 28080
 # The user must now provide the grid path.
 grid ?=
 
+# Set the default target to 'help'
+.DEFAULT_GOAL := help
+# Add this with your other phony targets
+.PHONY: help build prod dev test
+
 ARCH := $(shell uname -m)
 ifeq ($(ARCH),x86_64)
   PLATFORM ?= linux/amd64
@@ -15,10 +20,6 @@ else ifneq (,$(filter $(ARCH),aarch64 arm64))
   PLATFORM ?= linux/arm64
 endif
 
-# Set the default target to 'help'
-.DEFAULT_GOAL := help
-
-.PHONY: help build prod dev
 
 help: ## Show this help message.
 	@echo "Usage: make [target] [options]"
@@ -58,10 +59,9 @@ dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (R
 	$(IMAGE)-dev \
 	$(grid)
 
-# Add this with your other phony targets
-.PHONY: help build prod dev test
 
 # Add this target, for example after the 'help' target
 test: ## Run all tests with race detection.
 	@echo "Running tests..."
 	go test -v -race ./...
+	
