@@ -1,5 +1,7 @@
 # BurstGridGo
 
+[![Go CI](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml/badge.svg)](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml)
+
 A Go-native, declarative, and composable load testing tool for simulating real-world, protocol-aware workflows using HCL.
 
 
