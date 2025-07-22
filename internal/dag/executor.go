@@ -3,6 +3,7 @@ package dag
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/hcl/v2"
@@ -21,10 +22,11 @@ func NewExecutor(graph *Graph) *Executor {
 	return &Executor{Graph: graph}
 }
 
-// Run executes the entire graph concurrently.
-func (e *Executor) Run() {
+// Run executes the entire graph concurrently and returns an error if any node fails.
+func (e *Executor) Run() error {
 	// A channel to feed ready-to-run nodes to workers.
 	readyChan := make(chan *Node, len(e.Graph.Nodes))
+	defer close(readyChan)
 
 	// Add all root nodes (those with no dependencies) to the channel to start.
 	for _, node := range e.Graph.Nodes {
@@ -36,19 +38,42 @@ func (e *Executor) Run() {
 	e.wg.Add(len(e.Graph.Nodes))
 
 	// Start worker goroutines.
-	for i := 0; i < 4; i++ {
+	const numWorkers = 4 // This could be configurable later
+	for i := 0; i < numWorkers; i++ {
 		go e.worker(readyChan)
 	}
 
 	e.wg.Wait()
-	close(readyChan)
+
+	// After all workers are done, check for failures.
+	var failedModules []string
+	for _, node := range e.Graph.Nodes {
+		node.mu.RLock()
+		if node.State == Failed {
+			// The detailed error was already logged when it happened.
+			failedModules = append(failedModules, node.Name)
+		}
+		node.mu.RUnlock()
+	}
+
+	if len(failedModules) > 0 {
+		return fmt.Errorf("execution failed for modules: %s", strings.Join(failedModules, ", "))
+	}
+
+	return nil
 }
 
 func (e *Executor) worker(readyChan chan *Node) {
 	for node := range readyChan {
-		e.executeNode(node)
+		// If node execution fails, we stop this branch of the graph
+		// by not queuing its dependents.
+		if err := e.executeNode(node); err != nil {
+			// The error is already logged inside executeNode, so we just
+			// continue to the next available node in the channel.
+			continue
+		}
 
-		// After execution, check dependents to see if they are now ready.
+		// After SUCCESSFUL execution, check dependents to see if they are now ready.
 		e.nodeMutex.Lock()
 		for _, dependent := range node.Dependents {
 			if e.areDepsMet(dependent) {

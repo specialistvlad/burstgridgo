@@ -80,7 +80,9 @@ func main() {
 	if len(graph.Nodes) > 0 {
 		log.Println("🚀 Starting concurrent execution...")
 		executor := dag.NewExecutor(graph)
-		executor.Run()
+		if err := executor.Run(); err != nil {
+			log.Fatalf("❗️ %v", err)
+		}
 		log.Println("🏁 Execution finished.")
 	}
 }
