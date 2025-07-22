@@ -1,11 +1,9 @@
-// File: modules/socketio/module.go
-
 package socketio
 
 import (
 	"crypto/tls"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"time"
 
@@ -120,20 +118,18 @@ func interfaceToCtyValue(data interface{}) (cty.Value, error) {
 }
 
 func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
-	log.Printf("    ⚙️  Executing socketio runner for module '%s'...", mod.Name)
-
 	var config Config
 	if diags := gohcl.DecodeBody(mod.Body, ctx, &config); diags.HasErrors() {
 		return cty.NullVal(cty.DynamicPseudoType), diags
 	}
-	log.Printf("    📄 Decoded config for '%s': URL=%s, OnEvent=%s, EmitEvent=%s", mod.Name, config.URL, config.OnEvent, config.EmitEvent)
+
+	logger := slog.With("module", mod.Name, "url", config.URL)
+	logger.Debug("Decoded config", "onEvent", config.OnEvent, "emitEvent", config.EmitEvent)
 
 	timeout, err := time.ParseDuration(config.Timeout)
 	if err != nil {
 		timeout = 10 * time.Second
-		log.Printf("    ⏱️ Timeout not specified for '%s', using default: %s", mod.Name, timeout)
-	} else {
-		log.Printf("    ⏱️ Timeout configured for '%s': %s", mod.Name, timeout)
+		logger.Debug("Timeout not specified, using default", "timeout", timeout)
 	}
 
 	done := make(chan interface{}, 1)
@@ -144,84 +140,77 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
-	log.Printf("    dialing %s...", baseURL)
-
 	opts := socket.DefaultOptions()
 	opts.SetPath(parsedURL.Path)
 	if config.InsecureSkipVerify {
-		log.Printf("        ⚠️  Skipping TLS certificate verification for module '%s'", mod.Name)
+		logger.Warn("Skipping TLS certificate verification")
 		opts.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 	}
 	opts.SetTransports(types.NewSet(transports.WebSocket))
 
 	manager := socket.NewManager(baseURL, opts)
-	namespace := "/"
-	if config.Namespace != "" {
-		namespace = config.Namespace
+	namespace := config.Namespace
+	if namespace == "" {
+		namespace = "/"
 	}
 	io := manager.Socket(namespace, opts)
 
 	io.On(types.EventName("connect"), func(...any) {
-		log.Printf("    🔌 Successfully connected to %s (namespace: %s, sid: %s)", config.URL, namespace, io.Id())
+		logger.Info("Successfully connected", "namespace", namespace, "sid", io.Id())
 		if config.EmitEvent != "" {
 			data, err := ctyValueToInterface(config.EmitData)
 			if err != nil {
 				done <- err
 				return
 			}
-			log.Printf("    ➡️  Emitting event '%s' with data: %+v", config.EmitEvent, data)
+			logger.Info("Emitting event", "event", config.EmitEvent)
 			io.Emit(config.EmitEvent, data)
 		}
 	})
 
 	io.On(types.EventName("connect_error"), func(errs ...any) {
 		err := errs[0].(error)
-		log.Printf("    ❗️ Connection error for module '%s': %v", mod.Name, err)
+		logger.Error("Connection error", "error", err)
 		done <- err
 	})
 
 	io.On(types.EventName("disconnect"), func(reason ...any) {
-		log.Printf("    🔌 Disconnected from %s, reason: %v", config.URL, reason)
+		logger.Info("Disconnected", "reason", reason)
 	})
 
 	io.On(types.EventName(config.OnEvent), func(data ...any) {
-		log.Printf("    ⬅️  Received SUCCESS event '%s' with data: %v", config.OnEvent, data)
-		// Convert the generic response data into a cty.Value.
+		logger.Info("Received success event", "event", config.OnEvent)
 		if len(data) > 0 {
-			ctyVal, err := interfaceToCtyValue(data)
+			ctyVal, err := interfaceToCtyValue(data[0])
 			if err != nil {
 				done <- err
 				return
 			}
-			done <- ctyVal // Send the entire converted value on success.
+			done <- ctyVal
 			return
 		}
-		done <- fmt.Errorf("success event received with no data")
+		done <- fmt.Errorf("success event '%s' received with no data", config.OnEvent)
 	})
 
 	select {
 	case result := <-done:
-		log.Printf("    🔚 Event loop finished for '%s', disconnecting...", mod.Name)
+		logger.Debug("Event loop finished, disconnecting...")
 		io.Disconnect()
 		switch res := result.(type) {
-		case cty.Value: // This is our new success case.
-			// Return the result wrapped in an object with the key 'response_data'.
-			return cty.ObjectVal(map[string]cty.Value{
-				"response_data": res,
-			}), nil
-		case error: // This is a failure case.
+		case cty.Value:
+			return cty.ObjectVal(map[string]cty.Value{"response_data": res}), nil
+		case error:
 			return cty.NullVal(cty.DynamicPseudoType), res
 		default:
 			return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("unexpected result type from event handler")
 		}
 	case <-time.After(timeout):
-		log.Printf("    ⌛️ Timed out waiting for event '%s' on module '%s'", config.OnEvent, mod.Name)
 		io.Disconnect()
-		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("timed out waiting for event '%s' on module '%s'", config.OnEvent, mod.Name)
+		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("timed out waiting for event '%s'", config.OnEvent)
 	}
 }
 
 func init() {
 	engine.Registry["socketio"] = &SocketIoRunner{}
-	log.Println("🔌 socketio runner registered.")
+	slog.Debug("Runner registered", "runner", "socketio")
 }

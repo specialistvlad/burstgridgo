@@ -2,7 +2,7 @@ package healthcheck
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -12,21 +12,17 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "OK")
 }
 
-// StartServer starts a lightweight HTTP server in a separate goroutine
-// to serve the health check endpoint without blocking the main application.
+// StartServer starts a lightweight HTTP server in a separate goroutine.
 func StartServer(port int) {
-	// Create a new ServeMux to avoid using the default one, which is a best practice
-	// to prevent accidentally exposing other handlers.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", HealthHandler)
 
 	addr := fmt.Sprintf(":%d", port)
 
-	// Run the server in a goroutine so it doesn't block.
 	go func() {
-		log.Printf("🩺 Health check server starting on http://localhost%s/health", addr)
+		slog.Info("🩺 Health check server starting", "address", fmt.Sprintf("http://localhost%s/health", addr))
 		if err := http.ListenAndServe(addr, mux); err != nil {
-			log.Printf("❗️ Health check server failed: %v", err)
+			slog.Error("Health check server failed", "error", err)
 		}
 	}()
 }

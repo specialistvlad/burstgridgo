@@ -2,7 +2,7 @@ package http_request
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -18,15 +18,11 @@ type HTTPRequestRunner struct{}
 
 // Run executes the logic for an http_request module.
 func (r *HTTPRequestRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
-	log.Printf("    ⚙️  Executing http_request runner for module '%s'...", mod.Name)
-
-	// 1. Decode the specific config from the module's body.
 	config, err := DecodeConfig(mod.Body, ctx)
 	if err != nil {
-		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to decode config for module %s: %w", mod.Name, err)
+		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to decode config: %w", err)
 	}
 
-	// 2. Prepare and execute the HTTP request.
 	method := "GET"
 	if config.Method != "" {
 		method = strings.ToUpper(config.Method)
@@ -38,25 +34,24 @@ func (r *HTTPRequestRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Va
 
 	req, err := http.NewRequest(method, config.URL, nil)
 	if err != nil {
-		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to create request for module %s: %w", mod.Name, err)
+		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to create request: %w", err)
 	}
 
-	log.Printf("    ➡️   Making %s request to %s", method, config.URL)
+	slog.Info("Making HTTP request", "module", mod.Name, "method", method, "url", config.URL)
 	resp, err := client.Do(req)
 	if err != nil {
-		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to execute request for module %s: %w", mod.Name, err)
+		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// 3. Validate the response.
-	log.Printf("    ⬅️   Received status: %s (%d)", resp.Status, resp.StatusCode)
+	slog.Info("Received HTTP response", "module", mod.Name, "status", resp.Status)
+
 	if config.Expect != nil && config.Expect.Status != 0 {
 		if resp.StatusCode != config.Expect.Status {
-			return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("unexpected status for module %s: got %d, want %d", mod.Name, resp.StatusCode, config.Expect.Status)
+			return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("unexpected status: got %d, want %d", resp.StatusCode, config.Expect.Status)
 		}
 	}
 
-	log.Printf("    ✅ Successfully executed module '%s'.", mod.Name)
 	// This module produces no output for other modules.
 	return cty.NullVal(cty.DynamicPseudoType), nil
 }
@@ -64,10 +59,8 @@ func (r *HTTPRequestRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Va
 // init registers the http_request runner with the engine's registry.
 func init() {
 	engine.Registry["http-request"] = &HTTPRequestRunner{}
-	log.Println("🔌 http-request runner registered.")
+	slog.Debug("Runner registered", "runner", "http-request")
 }
-
-// --- Specific Config Structs and Decoder ---
 
 type HTTPExpect struct {
 	Status int `hcl:"status,optional"`

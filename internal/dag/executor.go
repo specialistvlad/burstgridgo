@@ -2,7 +2,7 @@ package dag
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -24,11 +24,9 @@ func NewExecutor(graph *Graph) *Executor {
 
 // Run executes the entire graph concurrently and returns an error if any node fails.
 func (e *Executor) Run() error {
-	// A channel to feed ready-to-run nodes to workers.
 	readyChan := make(chan *Node, len(e.Graph.Nodes))
 	defer close(readyChan)
 
-	// Add all root nodes (those with no dependencies) to the channel to start.
 	for _, node := range e.Graph.Nodes {
 		if len(node.Deps) == 0 {
 			readyChan <- node
@@ -37,7 +35,6 @@ func (e *Executor) Run() error {
 
 	e.wg.Add(len(e.Graph.Nodes))
 
-	// Start worker goroutines.
 	const numWorkers = 4 // This could be configurable later
 	for i := 0; i < numWorkers; i++ {
 		go e.worker(readyChan)
@@ -45,19 +42,17 @@ func (e *Executor) Run() error {
 
 	e.wg.Wait()
 
-	// After all workers are done, check for failures.
 	var failedModules []string
 	for _, node := range e.Graph.Nodes {
 		node.mu.RLock()
 		if node.State == Failed {
-			// The detailed error was already logged when it happened.
 			failedModules = append(failedModules, node.Name)
 		}
 		node.mu.RUnlock()
 	}
 
 	if len(failedModules) > 0 {
-		return fmt.Errorf("execution failed for modules: %s", strings.Join(failedModules, ", "))
+		return fmt.Errorf("modules failed: %s", strings.Join(failedModules, ", "))
 	}
 
 	return nil
@@ -65,15 +60,10 @@ func (e *Executor) Run() error {
 
 func (e *Executor) worker(readyChan chan *Node) {
 	for node := range readyChan {
-		// If node execution fails, we stop this branch of the graph
-		// by not queuing its dependents.
 		if err := e.executeNode(node); err != nil {
-			// The error is already logged inside executeNode, so we just
-			// continue to the next available node in the channel.
 			continue
 		}
 
-		// After SUCCESSFUL execution, check dependents to see if they are now ready.
 		e.nodeMutex.Lock()
 		for _, dependent := range node.Dependents {
 			if e.areDepsMet(dependent) {
@@ -87,19 +77,19 @@ func (e *Executor) worker(readyChan chan *Node) {
 func (e *Executor) executeNode(node *Node) error {
 	defer e.wg.Done()
 
-	log.Printf("  ▶️ Starting module '%s'...", node.Name)
+	logger := slog.With("module", node.Name, "runner", node.Module.Runner)
+	logger.Info("▶️ Starting module")
+
 	node.mu.Lock()
 	node.State = Running
 	node.mu.Unlock()
 
-	// 1. Build the evaluation context from completed dependencies.
 	ctx := e.buildEvalContext(node)
 
-	// 2. Look up the runner and execute it.
 	runner, ok := engine.Registry[node.Module.Runner]
 	if !ok {
-		err := fmt.Errorf("unknown runner type '%s' for module '%s'", node.Module.Runner, node.Name)
-		log.Printf("    ❗️ Error in module '%s': %v", node.Name, err)
+		err := fmt.Errorf("unknown runner type '%s'", node.Module.Runner)
+		logger.Error("Module execution failed", "error", err)
 		node.mu.Lock()
 		node.State = Failed
 		node.Error = err
@@ -109,7 +99,7 @@ func (e *Executor) executeNode(node *Node) error {
 
 	output, err := runner.Run(*node.Module, ctx)
 	if err != nil {
-		log.Printf("    ❗️ Error executing module '%s': %v", node.Name, err)
+		logger.Error("Module execution failed", "error", err)
 		node.mu.Lock()
 		node.State = Failed
 		node.Error = err
@@ -117,12 +107,11 @@ func (e *Executor) executeNode(node *Node) error {
 		return err
 	}
 
-	// Store the output on the node.
 	node.mu.Lock()
 	node.Output = output
 	node.State = Done
 	node.mu.Unlock()
-	log.Printf("  ✅ Finished module '%s'.", node.Name)
+	logger.Info("✅ Finished module")
 	return nil
 }
 
@@ -144,14 +133,12 @@ func (e *Executor) buildEvalContext(node *Node) *hcl.EvalContext {
 	vars := make(map[string]cty.Value)
 	moduleOutputs := make(map[string]cty.Value)
 
-	// Populate with outputs from dependencies
 	for depName, depNode := range node.Deps {
 		depNode.mu.RLock()
 		moduleOutputs[depName] = depNode.Output
 		depNode.mu.RUnlock()
 	}
 
-	// Structure it for HCL: {"module": {"dep_name": ...}}
 	vars["module"] = cty.ObjectVal(moduleOutputs)
 
 	return &hcl.EvalContext{

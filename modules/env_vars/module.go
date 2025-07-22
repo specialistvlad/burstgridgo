@@ -1,7 +1,7 @@
 package env_vars
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -13,8 +13,6 @@ import (
 type EnvVarsRunner struct{}
 
 func (r *EnvVarsRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
-	log.Printf("    ⚙️  Executing env_vars runner for module '%s'...", mod.Name)
-
 	envMap := make(map[string]cty.Value)
 	for _, e := range os.Environ() {
 		pair := strings.SplitN(e, "=", 2)
@@ -23,9 +21,6 @@ func (r *EnvVarsRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value,
 		}
 	}
 
-	// The output is an object with a single attribute "all",
-	// which contains the map of all environment variables.
-	// This matches the HCL expression "module.all_env_vars.all".
 	return cty.ObjectVal(map[string]cty.Value{
 		"all": cty.MapVal(envMap),
 	}), nil
@@ -33,5 +28,5 @@ func (r *EnvVarsRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value,
 
 func init() {
 	engine.Registry["env_vars"] = &EnvVarsRunner{}
-	log.Println("🔌 env_vars runner registered.")
+	slog.Debug("Runner registered", "runner", "env_vars")
 }

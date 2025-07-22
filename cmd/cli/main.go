@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/config"
@@ -20,8 +21,19 @@ func main() {
 	// 1. Parse all CLI arguments and flags.
 	cliOpts, err := config.Parse()
 	if err != nil {
-		log.Fatalf("Error parsing arguments: %v", err)
+		// Logger isn't set up yet, so use standard log here.
+		slog.Error("Failed to parse arguments", "error", err)
+		os.Exit(1)
 	}
+
+	// 2. Initialize the structured logger.
+	var handler slog.Handler
+	if cliOpts.LogFormat == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, nil)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, nil)
+	}
+	slog.SetDefault(slog.New(handler))
 
 	// Start the health check server if the port is configured.
 	if cliOpts.HealthcheckPort > 0 {
@@ -30,24 +42,25 @@ func main() {
 
 	var allModules []*engine.Module
 
-	// 2. If a grid path is provided, find and parse the HCL files.
+	// 3. If a grid path is provided, find and parse the HCL files.
 	if cliOpts.GridPath != "" {
 		hclFiles, err := engine.ResolveGridPath(cliOpts.GridPath)
 		if err != nil {
-			log.Fatalf("Error resolving grid path '%s': %v", cliOpts.GridPath, err)
+			slog.Error("Failed to resolve grid path", "path", cliOpts.GridPath, "error", err)
+			os.Exit(1)
 		}
 
 		if len(hclFiles) > 0 {
-			log.Printf("Found %d HCL file(s) to process from '%s':", len(hclFiles), cliOpts.GridPath)
+			slog.Info("Found HCL files to process", "count", len(hclFiles), "path", cliOpts.GridPath)
 			for _, file := range hclFiles {
-				log.Printf("   • %s", file)
+				slog.Debug("Resolved HCL file", "path", file)
 			}
 
 			// Parse all files to get a flat list of modules.
 			for _, file := range hclFiles {
 				config, err := engine.DecodeHCLFile(file)
 				if err != nil {
-					log.Printf("❗️ Error decoding %s: %v", file, err)
+					slog.Warn("Failed to decode HCL file", "path", file, "error", err)
 					continue
 				}
 				allModules = append(allModules, config.Modules...)
@@ -55,34 +68,36 @@ func main() {
 		}
 	}
 
-	// 3. If no modules were loaded, inject the help module.
+	// 4. If no modules were loaded, inject the help module.
 	if len(allModules) == 0 {
 		if cliOpts.GridPath != "" {
-			log.Printf("No modules found in '%s'. Displaying help.", cliOpts.GridPath)
+			slog.Info("No modules found in path, displaying help.", "path", cliOpts.GridPath)
 		}
 		// Create a single module to run the help runner.
 		allModules = []*engine.Module{
 			{
 				Name:   "show_help",
 				Runner: "help",
-				Body:   hcl.EmptyBody(), // Corrected: Call the function with ()
+				Body:   hcl.EmptyBody(),
 			},
 		}
 	}
 
-	// 4. Build the dependency graph.
+	// 5. Build the dependency graph.
 	graph, err := dag.NewGraph(allModules)
 	if err != nil {
-		log.Fatalf("❗️ Error building dependency graph: %v", err)
+		slog.Error("Failed to build dependency graph", "error", err)
+		os.Exit(1)
 	}
 
-	// 5. Create an executor and run the graph.
+	// 6. Create an executor and run the graph.
 	if len(graph.Nodes) > 0 {
-		log.Println("🚀 Starting concurrent execution...")
+		slog.Info("🚀 Starting concurrent execution...")
 		executor := dag.NewExecutor(graph)
 		if err := executor.Run(); err != nil {
-			log.Fatalf("❗️ %v", err)
+			slog.Error("Execution failed", "error", err)
+			os.Exit(1)
 		}
-		log.Println("🏁 Execution finished.")
+		slog.Info("🏁 Execution finished.")
 	}
 }
