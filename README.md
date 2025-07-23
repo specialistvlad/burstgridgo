@@ -2,6 +2,9 @@
 [![Go CI](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml/badge.svg)](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml)
 ![TUI in action](https://user-images.githubusercontent.com/12345/placeholder.gif)
 
+**⚠️ Important Note: Project Status ⚠️**
+`burstgridgo` is currently under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. This project is not recommended for external production use; it is intended for testing and development of `burstgridgo` itself.
+
 `burstgridgo` is a Go-native, declarative load testing tool for simulating real-world, protocol-aware workflows using HCL.
 
 ## Core Pillars
