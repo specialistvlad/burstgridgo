@@ -73,6 +73,6 @@ graph TD
 ```
 
 ## Learn More
-* **Roadmap & Vision**: See where the project is headed.
-* **Architecture Deep Dive**: Learn how `burstgridgo` works internally.
-* **Contributing Guide**: Find out how you can help.
+* **Roadmap & Vision**: [See where the project is headed.](./ROADMAP.md)
+* **Architecture Deep Dive**: [Learn how `burstgridgo` works internally.](./docs/ARCHITECTURE.md)
+* **Contributing Guide**: [Find out how you can help.](./CONTRIBUTING.md)
