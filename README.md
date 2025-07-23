@@ -1,8 +1,5 @@
 # burstgridgo
 [![Go CI](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml/badge.svg)](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml)
-
-Define complex load tests as code. Get insights, not just output.
-
 ![TUI in action](https://user-images.githubusercontent.com/12345/placeholder.gif)
 
 `burstgridgo` is a Go-native, declarative load testing tool for simulating real-world, protocol-aware workflows using HCL.
