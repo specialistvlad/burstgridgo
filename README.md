@@ -1,5 +1,5 @@
 # burstgridgo
-[![Go CI](https://github.com/vk/burstgridgo/actions/workflows/ci.yml/badge.svg)](https://github.com/vk/burstgridgo/actions/workflows/ci.yml) [![Go Report Card](https://goreportcard.com/badge/github.com/vk/burstgridgo)](https://goreportcard.com/report/github.com/vk/burstgridgo) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go CI](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml/badge.svg)](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml)
 
 Define complex load tests as code. Get insights, not just output.
 
