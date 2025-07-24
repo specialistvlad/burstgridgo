@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/vk/burstgridgo/internal/engine"
@@ -38,6 +39,8 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 	logger := slog.With("runner", "socketio", "url", input.URL, "onEvent", input.OnEvent, "emitEvent", input.EmitEvent)
 	logger.Debug("Handler started")
 	defer logger.Debug("Handler finished")
+
+	var isConnected atomic.Bool
 
 	timeout, err := time.ParseDuration(input.Timeout)
 	if err != nil {
@@ -74,8 +77,6 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 
 	// --- Event Listeners ---
 
-	// CORRECTED: The OnAny listener's signature is func(...any), where the event name
-	// is the first argument in the slice.
 	io.OnAny(func(args ...any) {
 		if len(args) == 0 {
 			return
@@ -85,17 +86,16 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 			logger.Warn("OnAny listener received event where name was not a string")
 			return
 		}
-
 		var eventData []any
 		if len(args) > 1 {
 			eventData = args[1:]
 		}
-
 		jsonData, _ := json.Marshal(eventData)
 		logger.Debug("EVENT RECEIVED", "event", eventName, "data", string(jsonData))
 	})
 
 	io.On(types.EventName("connect"), func(...any) {
+		isConnected.Store(true)
 		logger.Info("Successfully connected", "namespace", input.Namespace, "sid", io.Id())
 		if input.EmitEvent != "" {
 			data, err := ctyValueToInterface(input.EmitData)
@@ -142,8 +142,14 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 	logger.Debug("Waiting for event, timeout, or cancellation...")
 	select {
 	case <-opCtx.Done():
-		logger.Error("Operation context finished", "reason", opCtx.Err())
-		return nil, fmt.Errorf("timed out after %v waiting for event '%s'", timeout, input.OnEvent)
+		var errMsg string
+		if isConnected.Load() {
+			errMsg = fmt.Sprintf("timed out after connecting while waiting for event '%s'", input.OnEvent)
+		} else {
+			errMsg = "timed out while waiting for initial connection"
+		}
+		logger.Error("Operation context finished", "reason", opCtx.Err(), "detail", errMsg)
+		return nil, fmt.Errorf(errMsg)
 	case res := <-done:
 		logger.Debug("Result received from 'done' channel")
 		if res.err != nil {
