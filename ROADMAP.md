@@ -39,10 +39,6 @@ This is the highest priority. We will refactor the core engine and runner interf
 #### 2. Fix Critical Build & CI/CD Flaws
 The current CI and build process has several critical issues that undermine reliability.
 
-* **Align Go Versions**:
-    * **Problem**: `go.mod` specifies `go 1.24.5`, but the GitHub Actions workflow in `.github/workflows/ci.yml` uses `go-version: '1.22'`.
-    * **Fix**: Update the `ci.yml` file to use the same Go version as `go.mod` to ensure consistency between local development and CI.
-
 * **Optimize `Makefile` for Development**:
     * **Problem**: The `make dev` target rebuilds the dev Docker image on every invocation, which is slow and unnecessary.
     * **Fix**: Refactor the `dev` target to perform a one-time build of the dev image (if it doesn't exist) and then simply `docker run` on subsequent calls, mounting the code as a volume.
