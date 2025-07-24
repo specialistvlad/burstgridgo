@@ -42,10 +42,6 @@ All items have been fixed
 #### 3. Address Performance & Concurrency
 Improve the performance and scalability of the core engine and runners.
 
-* **Eliminate Executor Concurrency Bottleneck**:
-    * **Problem**: The `dag.Executor` uses a single `nodeMutex` to manage state changes and check for ready dependents. This creates a contention point on graphs with high fan-out.
-    * **Fix**: Replace the global mutex with a lock-free approach. Each node will have an atomic integer acting as a dependency counter. When a node finishes, it will atomically decrement the counter of its dependents. A dependent is scheduled to run when its counter reaches zero.
-
 * **Implement Shared HTTP Clients**:
     * **Problem**: The `http-request` and `s3` runners create a new `http.Client` for every single execution. This is inefficient as it prevents TCP connection reuse (Keep-Alive).
     * **Fix**: Refactor these runners to use a shared, package-level `http.Client` instance, improving performance for high-throughput tests.
