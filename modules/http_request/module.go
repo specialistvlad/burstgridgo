@@ -9,27 +9,25 @@ import (
 	"time"
 
 	"github.com/vk/burstgridgo/internal/engine"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Input defines the arguments for the http_request runner.
-// The `hcl` tags correspond to the `input` block in the manifest.
 type Input struct {
 	URL    string `hcl:"url"`
 	Method string `hcl:"method,optional"`
 }
 
-// Output defines the values produced by the http_request runner.
-// The `cty` tags are used to expose the fields back to HCL.
+// The native Go output struct. We can keep this for internal clarity.
 type Output struct {
-	StatusCode int    `cty:"status_code"`
-	Body       string `cty:"body"`
+	StatusCode int
+	Body       string
 }
 
 // OnRunHttpRequest is the handler for the 'http_request' runner's on_run event.
-func OnRunHttpRequest(ctx context.Context, input *Input) (*Output, error) {
+func OnRunHttpRequest(ctx context.Context, input *Input) (any, error) {
 	slog.Info("Making HTTP request", "method", input.Method, "url", input.URL)
 
-	// NOTE: We will address the shared http.Client in a later step as per our roadmap.
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
@@ -52,10 +50,16 @@ func OnRunHttpRequest(ctx context.Context, input *Input) (*Output, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	return &Output{
-		StatusCode: resp.StatusCode,
-		Body:       string(bodyBytes),
-	}, nil
+	// Manually construct the cty.Value for the output.
+	outputObject := cty.ObjectVal(map[string]cty.Value{
+		"status_code": cty.NumberIntVal(int64(resp.StatusCode)),
+		"body":        cty.StringVal(string(bodyBytes)),
+	})
+
+	// Wrap the output in an "output" attribute to match the HCL access pattern.
+	return cty.ObjectVal(map[string]cty.Value{
+		"output": outputObject,
+	}), nil
 }
 
 // init registers the handler with the engine.

@@ -1,3 +1,5 @@
+# File: examples/http_request.hcl
+
 step "http_request" "first" {
   arguments {
     url = "https://httpbin.org/get"
@@ -6,16 +8,16 @@ step "http_request" "first" {
 
 step "http_request" "second" {
   arguments {
-    url = "https://httpbin.org/delay/1" # This will take 1 second
+    url = "https://httpbin.org/delay/1"
   }
-  depends_on = [step.http_request.first]
+  depends_on = ["first"]
 }
 
 step "http_request" "third" {
   arguments {
-    url = "https://httpbin.org/delay/2" # This will take 2 seconds
+    url = "https://httpbin.org/delay/2"
   }
-  depends_on = [step.http_request.first]
+  depends_on = ["first"]
 }
 
 step "http_request" "final" {
@@ -24,7 +26,7 @@ step "http_request" "final" {
     method = "POST"
   }
   depends_on = [
-    step.http_request.second,
-    step.http_request.third,
+    "second",
+    "third",
   ]
 }
