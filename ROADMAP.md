@@ -19,11 +19,12 @@ This cycle focuses on a significant architectural evolution to align with our di
 #### 1. Core Architecture Evolution (Implement Our Design)
 This is the highest priority. We will refactor the core engine and runner interface to match the robust design we established.
 
-* **Evolve the HCL Syntax from `module` to `runner`**:
-    * Deprecate the generic `module` block in favor of a more explicit `runner "my_runner_instance" {}` block. This clarifies the configuration's intent.
+* HCL files define a runner, not a runner.go:
+    * Reinvent the `module` block in favor of a more explicit configuration's intent.
     * Introduce a `lifecycle {}` block with `on_start`, `on_run`, and `on_end` attributes to map to specific Go functions.
     * Add `input {}` and `output {}` schema blocks within the `runner` definition to create a typed, self-documenting contract between HCL and Go.
-    * Standardize on an `arguments {}` block for passing data, which will be decoded into the handler's input struct.
+    * `input {}` and `output {}` define the interface of each runner. So the configuration will be statically checked before execution.
+
 
 * **Implement New Go Handler Signature & Lifecycle**:
     * Redefine the primary `engine.Runner` interface. The current `Run(m Module, ctx *hcl.EvalContext) (cty.Value, error)` will be replaced.
@@ -34,7 +35,7 @@ This is the highest priority. We will refactor the core engine and runner interf
 
 * **Overhaul the Executor to Support the New Architecture**:
     * Modify the `dag.Executor` to create and manage the `context.Context` for each run.
-    * The executor will be responsible for decoding the HCL `arguments` block into the specific `*RunnerInput` struct for the handler and processing the returned `*RunnerOutput`.
+    
 
 #### 2. Fix Critical Build & CI/CD Flaws
 All items have been fixed
