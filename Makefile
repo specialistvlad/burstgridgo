@@ -10,8 +10,9 @@ grid ?=
 
 # Set the default target to 'help'
 .DEFAULT_GOAL := help
+
 # Add this with your other phony targets
-.PHONY: help build prod dev test
+.PHONY: help build build-dev prod dev test
 
 ARCH := $(shell uname -m)
 ifeq ($(ARCH),x86_64)
@@ -44,24 +45,25 @@ build: ## Build a production-ready Docker image.|   Creates tags for both versio
 prod: build ## Run the latest production image.|   Note: This default command does not mount a grid.
 	docker run --rm -p $(HEALTHCHECK_PORT):8080 $(IMAGE):$(VERSION)
 
-dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (Required) Path to HCL file.|     e="<vars>"    (Optional) Env vars to pass.|   Example:|     make dev grid=examples/dev.hcl e="API_KEY=secret"
+build-dev: ## Force a rebuild of the development Docker image.
+	@echo "Forcing a rebuild of the development image..."
+	docker build --target dev -t $(IMAGE)-dev .
+	
+dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (Required) Path to HCL file.|     e="<vars>"    (Optional) Env vars to pass.|   Example:|     make dev grid=examples/http_request.hcl e="API_KEY=secret"
 	$(eval DOCKER_FLAGS := $(foreach pair,$(e),-e "$(pair)"))
-	docker build \
-	  --target dev \
-	  -t $(IMAGE)-dev .
+	@docker image inspect $(IMAGE)-dev >/dev/null 2>&1 || make build-dev
 	@echo "Running dev container..."
 	docker run --rm -it \
-	-p $(HEALTHCHECK_PORT):8080 \
-	-v $(PWD):/app \
-	$(DOCKER_FLAGS) \
-	-u "$(id -u):$(id -g)" \
-	-w /app \
-	$(IMAGE)-dev \
-	$(grid)
+		-p $(HEALTHCHECK_PORT):8080 \
+		-v $(PWD):/app \
+		$(DOCKER_FLAGS) \
+		-u "$(id -u):$(id -g)" \
+		-w /app \
+		$(IMAGE)-dev \
+		$(grid)
 
 
 # Add this target, for example after the 'help' target
 test: ## Run all tests with race detection.
 	@echo "Running tests..."
 	go test -v -race ./...
-	

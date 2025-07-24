@@ -37,11 +37,7 @@ This is the highest priority. We will refactor the core engine and runner interf
     * The executor will be responsible for decoding the HCL `arguments` block into the specific `*RunnerInput` struct for the handler and processing the returned `*RunnerOutput`.
 
 #### 2. Fix Critical Build & CI/CD Flaws
-The current CI and build process has several critical issues that undermine reliability.
-
-* **Optimize `Makefile` for Development**:
-    * **Problem**: The `make dev` target rebuilds the dev Docker image on every invocation, which is slow and unnecessary.
-    * **Fix**: Refactor the `dev` target to perform a one-time build of the dev image (if it doesn't exist) and then simply `docker run` on subsequent calls, mounting the code as a volume.
+All items have been fixed
 
 #### 3. Address Performance & Concurrency
 Improve the performance and scalability of the core engine and runners.
