@@ -3,6 +3,7 @@ package socketio
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -26,23 +27,28 @@ type Input struct {
 	InsecureSkipVerify bool      `hcl:"insecure_skip_verify,optional"`
 }
 
-// Output defines the values produced by the socketio runner.
-type Output struct {
-	ResponseData cty.Value `cty:"response_data"`
+// opResult is a private struct to safely pass results through the done channel.
+type opResult struct {
+	value cty.Value
+	err   error
 }
 
 // OnRunSocketIO is the handler for the 'socketio' runner's on_run lifecycle event.
-func OnRunSocketIO(ctx context.Context, input *Input) (*Output, error) {
-	logger := slog.With("runner", "socketio", "url", input.URL)
-	logger.Debug("Executing Socket.IO runner", "onEvent", input.OnEvent, "emitEvent", input.EmitEvent)
+func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
+	logger := slog.With("runner", "socketio", "url", input.URL, "onEvent", input.OnEvent, "emitEvent", input.EmitEvent)
+	logger.Debug("Handler started")
+	defer logger.Debug("Handler finished")
 
 	timeout, err := time.ParseDuration(input.Timeout)
 	if err != nil {
-		// This uses the default from the manifest if parsing fails.
+		logger.Warn("Failed to parse timeout, using default 10s", "inputTimeout", input.Timeout, "error", err)
 		timeout = 10 * time.Second
 	}
+	logger.Debug("Operation timeout configured", "timeout", timeout)
 
-	done := make(chan interface{}, 1)
+	done := make(chan opResult, 1)
+	opCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	parsedURL, err := url.Parse(input.URL)
 	if err != nil {
@@ -58,60 +64,94 @@ func OnRunSocketIO(ctx context.Context, input *Input) (*Output, error) {
 	}
 	opts.SetTransports(types.NewSet(transports.WebSocket))
 
+	logger.Debug("Creating new Socket.IO manager", "baseURL", baseURL, "path", parsedURL.Path)
 	manager := socket.NewManager(baseURL, opts)
 	io := manager.Socket(input.Namespace, opts)
+	defer func() {
+		logger.Debug("Disconnecting socket client")
+		io.Disconnect()
+	}()
+
+	// --- Event Listeners ---
+
+	// CORRECTED: The OnAny listener's signature is func(...any), where the event name
+	// is the first argument in the slice.
+	io.OnAny(func(args ...any) {
+		if len(args) == 0 {
+			return
+		}
+		eventName, ok := args[0].(string)
+		if !ok {
+			logger.Warn("OnAny listener received event where name was not a string")
+			return
+		}
+
+		var eventData []any
+		if len(args) > 1 {
+			eventData = args[1:]
+		}
+
+		jsonData, _ := json.Marshal(eventData)
+		logger.Debug("EVENT RECEIVED", "event", eventName, "data", string(jsonData))
+	})
 
 	io.On(types.EventName("connect"), func(...any) {
 		logger.Info("Successfully connected", "namespace", input.Namespace, "sid", io.Id())
 		if input.EmitEvent != "" {
 			data, err := ctyValueToInterface(input.EmitData)
 			if err != nil {
-				done <- err
+				logger.Error("Failed to convert emit_data to interface", "error", err)
+				done <- opResult{err: err}
 				return
 			}
-			logger.Info("Emitting event", "event", input.EmitEvent)
+			jsonData, _ := json.Marshal(data)
+			logger.Info("Emitting event", "event", input.EmitEvent, "data", string(jsonData))
 			io.Emit(input.EmitEvent, data)
 		}
 	})
 
 	io.On(types.EventName("connect_error"), func(errs ...any) {
 		err := errs[0].(error)
-		logger.Error("Connection error", "error", err)
-		done <- err
+		logger.Error("Connection error received", "error", err)
+		done <- opResult{err: err}
 	})
 
 	io.On(types.EventName(input.OnEvent), func(data ...any) {
-		logger.Info("Received success event", "event", input.OnEvent)
+		logger.Info("Received target success event", "event", input.OnEvent)
+		var responseData cty.Value
 		if len(data) > 0 {
 			ctyVal, err := interfaceToCtyValue(data[0])
 			if err != nil {
-				done <- err
+				logger.Error("Failed to convert received data to cty.Value", "error", err)
+				done <- opResult{err: err}
 				return
 			}
-			done <- ctyVal
-			return
+			responseData = ctyVal
+		} else {
+			logger.Debug("Success event received with no data payload")
+			responseData = cty.NullVal(cty.DynamicPseudoType)
 		}
-		done <- fmt.Errorf("success event '%s' received with no data", input.OnEvent)
+
+		outputObject := cty.ObjectVal(map[string]cty.Value{"response_data": responseData})
+		finalValue := cty.ObjectVal(map[string]cty.Value{"output": outputObject})
+		logger.Debug("Successfully processed success event, sending result to channel")
+		done <- opResult{value: finalValue}
 	})
 
+	// --- Execution Block ---
+	logger.Debug("Waiting for event, timeout, or cancellation...")
 	select {
-	case <-ctx.Done():
-		io.Disconnect()
-		return nil, ctx.Err()
-	case result := <-done:
-		logger.Debug("Event loop finished, disconnecting...")
-		io.Disconnect()
-		switch res := result.(type) {
-		case cty.Value:
-			return &Output{ResponseData: res}, nil
-		case error:
-			return nil, res
-		default:
-			return nil, fmt.Errorf("unexpected result type from event handler")
+	case <-opCtx.Done():
+		logger.Error("Operation context finished", "reason", opCtx.Err())
+		return nil, fmt.Errorf("timed out after %v waiting for event '%s'", timeout, input.OnEvent)
+	case res := <-done:
+		logger.Debug("Result received from 'done' channel")
+		if res.err != nil {
+			logger.Error("Runner failed with an event-driven error", "error", res.err)
+			return nil, res.err
 		}
-	case <-time.After(timeout):
-		io.Disconnect()
-		return nil, fmt.Errorf("timed out waiting for event '%s'", input.OnEvent)
+		logger.Debug("Runner succeeded")
+		return res.value, nil
 	}
 }
 
@@ -123,8 +163,8 @@ func init() {
 	})
 }
 
-// ctyValueToInterface recursively converts a cty.Value to a standard Go interface{} for emitting.
-func ctyValueToInterface(val cty.Value) (interface{}, error) {
+// ctyValueToInterface and interfaceToCtyValue helper functions remain the same.
+func ctyValueToInterface(val cty.Value) (any, error) {
 	if !val.IsKnown() || val.IsNull() {
 		return nil, nil
 	}
@@ -142,7 +182,7 @@ func ctyValueToInterface(val cty.Value) (interface{}, error) {
 		}
 	}
 	if val.Type().IsObjectType() || val.Type().IsMapType() {
-		out := make(map[string]interface{})
+		out := make(map[string]any)
 		for it := val.ElementIterator(); it.Next(); {
 			k, v := it.Element()
 			valInterface, err := ctyValueToInterface(v)
@@ -154,7 +194,7 @@ func ctyValueToInterface(val cty.Value) (interface{}, error) {
 		return out, nil
 	}
 	if val.Type().IsTupleType() || val.Type().IsListType() {
-		var out []interface{}
+		var out []any
 		for it := val.ElementIterator(); it.Next(); {
 			_, v := it.Element()
 			valInterface, err := ctyValueToInterface(v)
@@ -168,8 +208,7 @@ func ctyValueToInterface(val cty.Value) (interface{}, error) {
 	return nil, fmt.Errorf("unsupported cty.Type for conversion: %s", val.Type().FriendlyName())
 }
 
-// interfaceToCtyValue converts a generic Go interface{} from the socket library into a cty.Value.
-func interfaceToCtyValue(data interface{}) (cty.Value, error) {
+func interfaceToCtyValue(data any) (cty.Value, error) {
 	if data == nil {
 		return cty.NullVal(cty.DynamicPseudoType), nil
 	}
@@ -180,7 +219,7 @@ func interfaceToCtyValue(data interface{}) (cty.Value, error) {
 		return cty.NumberFloatVal(v), nil
 	case bool:
 		return cty.BoolVal(v), nil
-	case map[string]interface{}:
+	case map[string]any:
 		attrs := make(map[string]cty.Value)
 		for key, val := range v {
 			ctyVal, err := interfaceToCtyValue(val)
@@ -190,7 +229,7 @@ func interfaceToCtyValue(data interface{}) (cty.Value, error) {
 			attrs[key] = ctyVal
 		}
 		return cty.ObjectVal(attrs), nil
-	case []interface{}:
+	case []any:
 		elems := make([]cty.Value, 0, len(v))
 		for _, val := range v {
 			ctyVal, err := interfaceToCtyValue(val)
