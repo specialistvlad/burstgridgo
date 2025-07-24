@@ -148,7 +148,7 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 			errMsg = "timed out while waiting for initial connection"
 		}
 		logger.Error("Operation context finished", "reason", opCtx.Err(), "detail", errMsg)
-		return nil, fmt.Errorf(errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
 	case res := <-done:
 		logger.Debug("Result received from 'done' channel")
 		if res.err != nil {
