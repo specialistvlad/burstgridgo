@@ -79,7 +79,7 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
     CMD ["curl", "--fail", "http://localhost:8080/health"]
 
 ENTRYPOINT ["/burstgridgo"]
-# CMD ["/grid/main.hcl"]
+CMD ["--healthcheck-port 8080", "/grid/main.hcl"]
 
 # =================================================================
 # Development Stage

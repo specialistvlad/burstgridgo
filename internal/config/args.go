@@ -19,7 +19,7 @@ func Parse() (*CLIOptions, error) {
 	// Define flags.
 	gridFlag := flag.String("grid", "", "Path to the grid file or directory.")
 	gFlag := flag.String("g", "", "Path to the grid file or directory (shorthand).")
-	healthPortFlag := flag.Int("healthcheck-port", 8080, "Port for the HTTP health check server. Set to 0 to disable.")
+	healthPortFlag := flag.Int("healthcheck-port", 0, "Port for the HTTP health check server. Set to 0 to disable. Defauly is 0.")
 	logFormatFlag := flag.String("log-format", "text", "Log output format. Options: 'text' or 'json'.")
 	logLevelFlag := flag.String("log-level", "info", "Set the logging level. Options: 'debug', 'info', 'warn', 'error'.")
 
