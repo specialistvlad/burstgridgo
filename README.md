@@ -1,11 +1,33 @@
 # burstgridgo
-[![Go CI](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml/badge.svg)](https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml)
-![TUI in action](https://user-images.githubusercontent.com/12345/placeholder.gif)
+
+<div style="text-align: center;">
+  <a href="https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml">
+    <img src="https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml/badge.svg" alt="Go CI">
+  </a>
+  <img src="https://user-images.githubusercontent.com/12345/placeholder.gif" alt="TUI in action">
+  <a href="https://github.com/specialistvlad/burstgridgo/graphs/commit-activity">
+    <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/specialistvlad/burstgridgo">
+  </a>
+  <a href="https://github.com/specialistvlad/burstgridgo/issues">
+    <img alt="GitHub open issues" src="https://img.shields.io/github/issues/specialistvlad/burstgridgo">
+  </a>
+  <a href="https://github.com/specialistvlad/burstgridgo/pulls">
+    <img alt="GitHub open pull requests" src="https://img.shields.io/github/issues-pr/specialistvlad/burstgridgo">
+  </a>
+  <a href="https://github.com/specialistvlad/burstgridgo/blob/main/LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/specialistvlad/burstgridgo">
+  </a>
+</div>
+
+ <br>
 
 **⚠️ Important Note: Project Status ⚠️**
-`burstgridgo` is currently under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. This project is not recommended for external production use; it is intended for testing and development of `burstgridgo` itself.
+
+The project is currently under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. This project is not recommended for external production use; it is intended for testing and development of `burstgridgo` itself.
+
 
 `burstgridgo` is a Go-native, declarative load testing tool for simulating real-world, protocol-aware workflows using HCL.
+
 
 ## Core Pillars
 * **Declarative Grids (HCL)**: Define multi-protocol workflows (e.g., REST API -> Socket.IO -> S3) in simple, composable HCL files. Your test plans become readable, versionable infrastructure.
