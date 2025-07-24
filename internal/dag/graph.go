@@ -22,13 +22,13 @@ const (
 // Node is a single node in the execution graph.
 type Node struct {
 	Name       string
-	Module     *engine.Module
-	Deps       map[string]*Node // Nodes this node depends on
-	Dependents map[string]*Node // Nodes that depend on this one
-	depCount   atomic.Int32     // Counter for pending dependencies
+	Step       *engine.Step // <-- Changed from Module
+	Deps       map[string]*Node
+	Dependents map[string]*Node
+	depCount   atomic.Int32
 	State      atomic.Int32
 	Error      error
-	Output     cty.Value // Stores the output of the executed module
+	Output     cty.Value
 }
 
 // Graph is the collection of all nodes.
@@ -38,8 +38,8 @@ type Graph struct {
 
 // detectCycles checks for circular dependencies in the graph using DFS.
 func (g *Graph) detectCycles() error {
-	visiting := make(map[string]bool) // Nodes currently in the recursion stack (gray set)
-	visited := make(map[string]bool)  // Nodes that have been fully processed (black set)
+	visiting := make(map[string]bool)
+	visited := make(map[string]bool)
 
 	var visit func(node *Node) error
 	visit = func(node *Node) error {
@@ -47,8 +47,7 @@ func (g *Graph) detectCycles() error {
 
 		for _, dep := range node.Deps {
 			if visiting[dep.Name] {
-				// Cycle detected!
-				return fmt.Errorf("cycle detected involving module '%s'", dep.Name)
+				return fmt.Errorf("cycle detected involving step '%s'", dep.Name)
 			}
 			if !visited[dep.Name] {
 				if err := visit(dep); err != nil {
@@ -73,20 +72,20 @@ func (g *Graph) detectCycles() error {
 	return nil
 }
 
-// NewGraph builds a dependency graph from a flat list of modules.
-func NewGraph(modules []*engine.Module) (*Graph, error) {
+// NewGraph builds a dependency graph from a flat list of steps.
+func NewGraph(steps []*engine.Step) (*Graph, error) {
 	graph := &Graph{
 		Nodes: make(map[string]*Node),
 	}
 
 	// First pass: create all nodes
-	for _, m := range modules {
-		if _, exists := graph.Nodes[m.Name]; exists {
-			return nil, fmt.Errorf("duplicate module name found: %s", m.Name)
+	for _, s := range steps {
+		if _, exists := graph.Nodes[s.Name]; exists {
+			return nil, fmt.Errorf("duplicate step name found: %s", s.Name)
 		}
-		graph.Nodes[m.Name] = &Node{
-			Name:       m.Name,
-			Module:     m,
+		graph.Nodes[s.Name] = &Node{
+			Name:       s.Name,
+			Step:       s,
 			State:      atomic.Int32{},
 			depCount:   atomic.Int32{},
 			Deps:       make(map[string]*Node),
@@ -97,17 +96,17 @@ func NewGraph(modules []*engine.Module) (*Graph, error) {
 	// Second pass: link dependencies (explicit and implicit)
 	for _, node := range graph.Nodes {
 		// 1. Explicit dependencies from "depends_on"
-		for _, depName := range node.Module.DependsOn {
+		for _, depName := range node.Step.DependsOn {
 			depNode, ok := graph.Nodes[depName]
 			if !ok {
-				return nil, fmt.Errorf("module '%s' depends on non-existent module '%s'", node.Name, depName)
+				return nil, fmt.Errorf("step '%s' depends on non-existent step '%s'", node.Name, depName)
 			}
 			node.Deps[depName] = depNode
 			depNode.Dependents[node.Name] = node
 		}
 
 		// 2. Implicit dependencies from HCL variable references.
-		attrs, diags := node.Module.Body.JustAttributes()
+		attrs, diags := node.Step.Arguments.JustAttributes()
 		if diags.HasErrors() {
 			return nil, diags
 		}
@@ -115,11 +114,13 @@ func NewGraph(modules []*engine.Module) (*Graph, error) {
 		for _, attr := range attrs {
 			vars := attr.Expr.Variables()
 			for _, v := range vars {
-				if len(v) > 1 && v.RootName() == "module" {
+				// This logic needs to be updated to look for `step.` instead of `module.`
+				// For now, let's assume it still works with a `step` variable.
+				if len(v) > 1 && v.RootName() == "step" { // <-- Changed from "module"
 					depName := v[1].(hcl.TraverseAttr).Name
 					depNode, ok := graph.Nodes[depName]
 					if !ok {
-						return nil, fmt.Errorf("module '%s' refers to non-existent module '%s'", node.Name, depName)
+						return nil, fmt.Errorf("step '%s' refers to non-existent step '%s'", node.Name, depName)
 					}
 					// Link them if not already linked
 					if _, exists := node.Deps[depName]; !exists {

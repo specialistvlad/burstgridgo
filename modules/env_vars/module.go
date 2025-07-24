@@ -2,32 +2,34 @@ package env_vars
 
 import (
 	"context"
-	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/engine"
-	"github.com/zclconf/go-cty/cty"
 )
 
-type EnvVarsRunner struct{}
+// Output defines the values produced by the env_vars runner.
+type Output struct {
+	All map[string]string `cty:"all"`
+}
 
-func (r *EnvVarsRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
-	envMap := make(map[string]cty.Value)
+// OnRunEnvVars is the handler for the 'env_vars' runner's on_run lifecycle event.
+func OnRunEnvVars(ctx context.Context) (*Output, error) {
+	envMap := make(map[string]string)
 	for _, e := range os.Environ() {
 		pair := strings.SplitN(e, "=", 2)
 		if len(pair) == 2 {
-			envMap[pair[0]] = cty.StringVal(pair[1])
+			envMap[pair[0]] = pair[1]
 		}
 	}
 
-	return cty.ObjectVal(map[string]cty.Value{
-		"all": cty.MapVal(envMap),
-	}), nil
+	return &Output{All: envMap}, nil
 }
 
+// init registers the handler with the engine.
 func init() {
-	engine.Registry["env_vars"] = &EnvVarsRunner{}
-	slog.Debug("Runner registered", "runner", "env_vars")
+	engine.RegisterHandler("OnRunEnvVars", &engine.RegisteredHandler{
+		NewInput: nil, // This runner takes no input.
+		Fn:       OnRunEnvVars,
+	})
 }

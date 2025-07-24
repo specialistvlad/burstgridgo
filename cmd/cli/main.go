@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"reflect"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/config"
@@ -47,12 +48,19 @@ func main() {
 	}
 	slog.SetDefault(slog.New(handler))
 
+	// Discover all available runner definitions from the modules directory.
+	slog.Info("Discovering available runners...")
+	if err := engine.DiscoverRunners("modules"); err != nil {
+		slog.Error("Failed to discover runners", "error", err)
+		os.Exit(1)
+	}
+
 	// Start the health check server if the port is configured.
 	if cliOpts.HealthcheckPort > 0 {
 		go healthcheck.StartServer(cliOpts.HealthcheckPort)
 	}
 
-	var allModules []*engine.Module
+	var allSteps []*engine.Step
 
 	// 3. If a grid path is provided, find and parse the HCL files.
 	if cliOpts.GridPath != "" {
@@ -68,39 +76,43 @@ func main() {
 				slog.Debug("Resolved HCL file", "path", file)
 			}
 
-			// Parse all files to get a flat list of modules.
+			// Parse all files to get a flat list of steps.
 			for _, file := range hclFiles {
-				config, err := engine.DecodeHCLFile(file)
+				config, err := engine.DecodeGridFile(file)
 				if err != nil {
 					slog.Warn("Failed to decode HCL file", "path", file, "error", err)
 					continue
 				}
-				allModules = append(allModules, config.Modules...)
+				allSteps = append(allSteps, config.Steps...)
 			}
 		}
 	}
 
-	// 4. If no modules were loaded, inject the help module.
-	if len(allModules) == 0 {
+	// 4. If no steps were loaded, inject the help step.
+	if len(allSteps) == 0 {
 		if cliOpts.GridPath != "" {
-			slog.Info("No modules found in path, displaying help.", "path", cliOpts.GridPath)
+			slog.Info("No steps found in path, displaying help.", "path", cliOpts.GridPath)
 		}
-		// Create a single module to run the help runner.
-		allModules = []*engine.Module{
+		// Create a single step to run the help runner.
+		allSteps = []*engine.Step{
 			{
-				Name:   "show_help",
-				Runner: "help",
-				Body:   hcl.EmptyBody(),
+				Name:       "show_help",
+				RunnerType: "help",
+				Arguments:  hcl.EmptyBody(),
 			},
 		}
 	}
 
 	// 5. Build the dependency graph.
-	graph, err := dag.NewGraph(allModules)
+	graph, err := dag.NewGraph(allSteps)
 	if err != nil {
 		slog.Error("Failed to build dependency graph", "error", err)
 		os.Exit(1)
 	}
+
+	// --- ADD THIS DEBUG LINE ---
+	slog.Info("Handlers registered:", "count", len(engine.HandlerRegistry), "keys", reflect.ValueOf(engine.HandlerRegistry).MapKeys())
+	// ---------------------------
 
 	// 6. Create an executor and run the graph.
 	if len(graph.Nodes) > 0 {

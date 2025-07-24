@@ -1,12 +1,11 @@
-module "env" {
-  runner = "env_vars"
-}
+step "env_vars" "env" {}
 
-module "socketio_ping_pong" {
-  runner               = "socketio"
-  url                  = module.env.all.SOCKETIO_WSS_URL
-  on_event             = "pong"
-  emit_event           = "ping"
-  timeout              = "5s"
-  insecure_skip_verify = true
+step "socketio" "ping_pong" {
+  arguments {
+    url                  = step.env_vars.env.output.all.SOCKETIO_WSS_URL
+    on_event             = "pong"
+    emit_event           = "ping"
+    timeout              = "5s"
+    insecure_skip_verify = true
+  }
 }

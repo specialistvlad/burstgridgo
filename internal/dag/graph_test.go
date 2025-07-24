@@ -13,23 +13,24 @@ import (
 func TestNewGraph_CycleDetection(t *testing.T) {
 	t.Parallel() // Mark this test as safe to run in parallel.
 
-	// Arrange: Create modules with a circular dependency (A -> B -> A).
-	moduleA := &engine.Module{
-		Name:      "A",
-		Runner:    "test",
-		Body:      hcl.EmptyBody(),
-		DependsOn: []string{"B"},
+	// Arrange: Create steps with a circular dependency (A -> B -> A).
+	// We use engine.Step as per the updated architecture.
+	stepA := &engine.Step{
+		Name:       "A",
+		RunnerType: "test", // Renamed from Runner to RunnerType
+		Arguments:  hcl.EmptyBody(),
+		DependsOn:  []string{"B"},
 	}
-	moduleB := &engine.Module{
-		Name:      "B",
-		Runner:    "test",
-		Body:      hcl.EmptyBody(),
-		DependsOn: []string{"A"},
+	stepB := &engine.Step{
+		Name:       "B",
+		RunnerType: "test", // Renamed from Runner to RunnerType
+		Arguments:  hcl.EmptyBody(),
+		DependsOn:  []string{"A"},
 	}
-	modules := []*engine.Module{moduleA, moduleB}
+	steps := []*engine.Step{stepA, stepB} // Use a slice of *engine.Step
 
 	// Act: Attempt to create a graph, which should fail.
-	_, err := NewGraph(modules)
+	_, err := NewGraph(steps) // Pass the slice of *engine.Step
 
 	// Assert: Check that an error indicating a cycle was returned.
 	if err == nil {

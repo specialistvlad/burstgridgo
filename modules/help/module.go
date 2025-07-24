@@ -3,24 +3,19 @@ package help
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/engine"
-	"github.com/zclconf/go-cty/cty"
 )
 
-// HelpRunner implements the engine.Runner interface to display help text.
-type HelpRunner struct{}
-
-// Run executes the logic for the help module.
-func (r *HelpRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
+// OnRunHelp is the handler for the 'help' runner's on_run lifecycle event.
+// It matches the standard signature func(ctx, input) (output, error).
+func OnRunHelp(ctx context.Context, input any) (any, error) {
 	helpText := `
 BurstGridGo - A declarative, concurrency-first load testing tool.
 
 Description:
   BurstGridGo executes workflows defined in HCL files, known as "grids".
-  It builds a dependency graph from your modules and runs them concurrently,
+  It builds a dependency graph from them and runs them concurrently,
   respecting the dependencies you define.
 
 Usage:
@@ -42,21 +37,15 @@ Options:
 
   --healthcheck-port int
     Port for the HTTP health check server. (default: 8080)
-
-Examples:
-  # Run a grid with detailed debug logging
-  burstgridgo --log-level=debug ./grids/my_test.hcl
-
-  # Run with targeted verbose logs for the 'login' and 'upload' modules
-  BGGO_DEBUG_MODULES=login,upload burstgridgo --log-level=debug ./grids/my_test.hcl
 `
 	fmt.Println(helpText)
-
-	return cty.NullVal(cty.DynamicPseudoType), nil
+	return nil, nil
 }
 
-// init registers the help runner with the engine's registry.
+// init registers the handler with the engine.
 func init() {
-	engine.Registry["help"] = &HelpRunner{}
-	slog.Debug("Runner registered", "runner", "help")
+	engine.RegisterHandler("OnRunHelp", &engine.RegisteredHandler{
+		NewInput: nil, // This handler takes no input.
+		Fn:       OnRunHelp,
+	})
 }

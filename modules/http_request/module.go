@@ -3,81 +3,65 @@ package http_request
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/vk/burstgridgo/internal/engine"
-	"github.com/zclconf/go-cty/cty"
 )
 
-// HTTPRequestRunner implements the engine.Runner interface for HTTP requests.
-type HTTPRequestRunner struct{}
+// Input defines the arguments for the http_request runner.
+// The `hcl` tags correspond to the `input` block in the manifest.
+type Input struct {
+	URL    string `hcl:"url"`
+	Method string `hcl:"method,optional"`
+}
 
-// Run executes the logic for an http_request module.
-func (r *HTTPRequestRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
-	config, err := DecodeConfig(mod.Body, evalCtx)
-	if err != nil {
-		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to decode config: %w", err)
-	}
+// Output defines the values produced by the http_request runner.
+// The `cty` tags are used to expose the fields back to HCL.
+type Output struct {
+	StatusCode int    `cty:"status_code"`
+	Body       string `cty:"body"`
+}
 
-	method := "GET"
-	if config.Method != "" {
-		method = strings.ToUpper(config.Method)
-	}
+// OnRunHttpRequest is the handler for the 'http_request' runner's on_run event.
+func OnRunHttpRequest(ctx context.Context, input *Input) (*Output, error) {
+	slog.Info("Making HTTP request", "method", input.Method, "url", input.URL)
 
+	// NOTE: We will address the shared http.Client in a later step as per our roadmap.
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, config.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, input.Method, input.URL, nil)
 	if err != nil {
-		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	slog.Info("Making HTTP request", "module", mod.Name, "method", method, "url", config.URL)
 	resp, err := client.Do(req)
 	if err != nil {
-		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to execute request: %w", err)
+		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	slog.Info("Received HTTP response", "module", mod.Name, "status", resp.Status)
+	slog.Info("Received HTTP response", "status", resp.Status)
 
-	if config.Expect != nil && config.Expect.Status != 0 {
-		if resp.StatusCode != config.Expect.Status {
-			return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("unexpected status: got %d, want %d", resp.StatusCode, config.Expect.Status)
-		}
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// This module produces no output for other modules.
-	return cty.NullVal(cty.DynamicPseudoType), nil
+	return &Output{
+		StatusCode: resp.StatusCode,
+		Body:       string(bodyBytes),
+	}, nil
 }
 
-// init registers the http_request runner with the engine's registry.
+// init registers the handler with the engine.
 func init() {
-	engine.Registry["http-request"] = &HTTPRequestRunner{}
-	slog.Debug("Runner registered", "runner", "http-request")
-}
-
-type HTTPExpect struct {
-	Status int `hcl:"status,optional"`
-}
-
-type Config struct {
-	Method string      `hcl:"method,optional"`
-	URL    string      `hcl:"url"`
-	Expect *HTTPExpect `hcl:"expect,block"`
-}
-
-func DecodeConfig(body hcl.Body, ctx *hcl.EvalContext) (*Config, error) {
-	var config Config
-	diags := gohcl.DecodeBody(body, ctx, &config)
-	if diags.HasErrors() {
-		return nil, diags
-	}
-	return &config, nil
+	engine.RegisterHandler("OnRunHttpRequest", &engine.RegisteredHandler{
+		NewInput: func() any { return new(Input) },
+		Fn:       OnRunHttpRequest,
+	})
 }

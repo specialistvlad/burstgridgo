@@ -5,41 +5,39 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
 )
 
-type PrintRunner struct{}
-
-// Config defines the HCL structure for this module.
-type Config struct {
-	Input cty.Value `hcl:"input"`
+// Input defines the arguments for the print runner.
+// Since the HCL input type is 'any', we accept it as a raw cty.Value.
+type Input struct {
+	Value cty.Value `hcl:"input"`
 }
 
-func (r *PrintRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
-	var config Config
-	if diags := gohcl.DecodeBody(mod.Body, evalCtx, &config); diags.HasErrors() {
-		return cty.NullVal(cty.DynamicPseudoType), diags
-	}
+// OnRunPrint is the handler for the 'print' runner's on_run lifecycle event.
+func OnRunPrint(ctx context.Context, input *Input) (any, error) {
+	slog.Info("Printing input")
 
-	slog.Info("Printing input", "module", mod.Name)
-
-	if config.Input.Type().IsMapType() || config.Input.Type().IsObjectType() {
-		it := config.Input.ElementIterator()
+	if input.Value.Type().IsMapType() || input.Value.Type().IsObjectType() {
+		it := input.Value.ElementIterator()
 		for it.Next() {
 			k, v := it.Element()
+			// This is a simplified print for now. A more robust version
+			// would handle nested structures and different types.
 			fmt.Printf("      %s = %s\n", k.AsString(), v.AsString())
 		}
 	} else {
-		fmt.Printf("      %s\n", config.Input.GoString())
+		fmt.Printf("      %v\n", input.Value.GoString())
 	}
 
-	return cty.NullVal(cty.DynamicPseudoType), nil
+	return nil, nil
 }
 
+// init registers the handler with the engine.
 func init() {
-	engine.Registry["print"] = &PrintRunner{}
-	slog.Debug("Runner registered", "runner", "print")
+	engine.RegisterHandler("OnRunPrint", &engine.RegisteredHandler{
+		NewInput: func() any { return new(Input) },
+		Fn:       OnRunPrint,
+	})
 }

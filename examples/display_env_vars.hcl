@@ -1,11 +1,10 @@
-# Read all environment variables
-module "all_env_vars" {
-  runner = "env_vars"
-}
+# This step calls the "env_vars" runner and gives this instance the name "read".
+step "env_vars" "read" {}
 
-
-# Display all environment variables
-module "display_envs" {
-  runner = "print"
-  input = module.all_env_vars.all
+# This step calls the "print" runner. It uses HCL interpolation to access the
+# output of the "read" step above.
+step "print" "display" {
+  arguments {
+    input = step.env_vars.read.output.all
+  }
 }
