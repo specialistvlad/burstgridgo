@@ -1,10 +1,8 @@
-// ./internal/dag/graph.go
-
 package dag
 
 import (
 	"fmt"
-	"sync"
+	"sync/atomic"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/engine"
@@ -12,7 +10,7 @@ import (
 )
 
 // State represents the execution state of a node in the graph.
-type State int
+type State int32
 
 const (
 	Pending State = iota
@@ -23,16 +21,14 @@ const (
 
 // Node is a single node in the execution graph.
 type Node struct {
-	Name   string
-	Module *engine.Module
-
+	Name       string
+	Module     *engine.Module
 	Deps       map[string]*Node // Nodes this node depends on
 	Dependents map[string]*Node // Nodes that depend on this one
-
-	State  State
-	Error  error
-	Output cty.Value // Stores the output of the executed module
-	mu     sync.RWMutex
+	depCount   atomic.Int32     // Counter for pending dependencies
+	State      atomic.Int32
+	Error      error
+	Output     cty.Value // Stores the output of the executed module
 }
 
 // Graph is the collection of all nodes.
@@ -91,7 +87,8 @@ func NewGraph(modules []*engine.Module) (*Graph, error) {
 		graph.Nodes[m.Name] = &Node{
 			Name:       m.Name,
 			Module:     m,
-			State:      Pending,
+			State:      atomic.Int32{},
+			depCount:   atomic.Int32{},
 			Deps:       make(map[string]*Node),
 			Dependents: make(map[string]*Node),
 		}
@@ -110,7 +107,6 @@ func NewGraph(modules []*engine.Module) (*Graph, error) {
 		}
 
 		// 2. Implicit dependencies from HCL variable references.
-		// Use JustAttributes to analyze expressions without full schema validation.
 		attrs, diags := node.Module.Body.JustAttributes()
 		if diags.HasErrors() {
 			return nil, diags
@@ -133,6 +129,11 @@ func NewGraph(modules []*engine.Module) (*Graph, error) {
 				}
 			}
 		}
+	}
+
+	// Third pass: initialize dependency counters for all nodes.
+	for _, node := range graph.Nodes {
+		node.depCount.Store(int32(len(node.Deps)))
 	}
 
 	// Check for cycles in the graph.

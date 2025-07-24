@@ -13,11 +13,11 @@ import (
 
 // Executor runs the tasks in a graph.
 type Executor struct {
-	Graph     *Graph
-	wg        sync.WaitGroup
-	nodeMutex sync.Mutex
+	Graph *Graph
+	wg    sync.WaitGroup
 }
 
+// NewExecutor creates a new graph executor.
 func NewExecutor(graph *Graph) *Executor {
 	return &Executor{Graph: graph}
 }
@@ -27,8 +27,9 @@ func (e *Executor) Run() error {
 	readyChan := make(chan *Node, len(e.Graph.Nodes))
 	defer close(readyChan)
 
+	// Find all nodes with no dependencies to start.
 	for _, node := range e.Graph.Nodes {
-		if len(node.Deps) == 0 {
+		if node.depCount.Load() == 0 {
 			readyChan <- node
 		}
 	}
@@ -44,11 +45,9 @@ func (e *Executor) Run() error {
 
 	var failedModules []string
 	for _, node := range e.Graph.Nodes {
-		node.mu.RLock()
-		if node.State == Failed {
+		if node.State.Load() == int32(Failed) {
 			failedModules = append(failedModules, node.Name)
 		}
-		node.mu.RUnlock()
 	}
 
 	if len(failedModules) > 0 {
@@ -60,17 +59,18 @@ func (e *Executor) Run() error {
 
 func (e *Executor) worker(readyChan chan *Node) {
 	for node := range readyChan {
+		// If execution fails, we stop processing this branch of the graph.
 		if err := e.executeNode(node); err != nil {
 			continue
 		}
 
-		e.nodeMutex.Lock()
+		// Atomically decrement the counter of each dependent.
+		// If a dependent's counter reaches zero, it's ready to run.
 		for _, dependent := range node.Dependents {
-			if e.areDepsMet(dependent) {
+			if dependent.depCount.Add(-1) == 0 {
 				readyChan <- dependent
 			}
 		}
-		e.nodeMutex.Unlock()
 	}
 }
 
@@ -80,9 +80,7 @@ func (e *Executor) executeNode(node *Node) error {
 	logger := slog.With("module", node.Name, "runner", node.Module.Runner)
 	logger.Info("▶️ Starting module")
 
-	node.mu.Lock()
-	node.State = Running
-	node.mu.Unlock()
+	node.State.Store(int32(Running))
 
 	ctx := e.buildEvalContext(node)
 
@@ -90,42 +88,23 @@ func (e *Executor) executeNode(node *Node) error {
 	if !ok {
 		err := fmt.Errorf("unknown runner type '%s'", node.Module.Runner)
 		logger.Error("Module execution failed", "error", err)
-		node.mu.Lock()
-		node.State = Failed
 		node.Error = err
-		node.mu.Unlock()
+		node.State.Store(int32(Failed))
 		return err
 	}
 
 	output, err := runner.Run(*node.Module, ctx)
 	if err != nil {
 		logger.Error("Module execution failed", "error", err)
-		node.mu.Lock()
-		node.State = Failed
 		node.Error = err
-		node.mu.Unlock()
+		node.State.Store(int32(Failed))
 		return err
 	}
 
-	node.mu.Lock()
 	node.Output = output
-	node.State = Done
-	node.mu.Unlock()
+	node.State.Store(int32(Done))
 	logger.Info("✅ Finished module")
 	return nil
-}
-
-// areDepsMet checks if all dependencies of a given node are in the Done state.
-func (e *Executor) areDepsMet(node *Node) bool {
-	for _, dep := range node.Deps {
-		dep.mu.RLock()
-		state := dep.State
-		dep.mu.RUnlock()
-		if state != Done {
-			return false
-		}
-	}
-	return true
 }
 
 // buildEvalContext creates the HCL evaluation context for a node.
@@ -134,9 +113,7 @@ func (e *Executor) buildEvalContext(node *Node) *hcl.EvalContext {
 	moduleOutputs := make(map[string]cty.Value)
 
 	for depName, depNode := range node.Deps {
-		depNode.mu.RLock()
 		moduleOutputs[depName] = depNode.Output
-		depNode.mu.RUnlock()
 	}
 
 	vars["module"] = cty.ObjectVal(moduleOutputs)
