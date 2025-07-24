@@ -20,26 +20,94 @@ This cycle focuses on a significant architectural evolution to align with our di
 This is the highest priority. We will refactor the core engine and runner interface to match the robust design we established.
 
 * HCL files define a runner, not a runner.go:
-    * Reinvent the `module` block in favor of a more explicit configuration's intent.
-    * Introduce a `lifecycle {}` block with `on_start`, `on_run`, and `on_end` attributes to map to specific Go functions.
-    * Add `input {}` and `output {}` schema blocks within the `runner` definition to create a typed, self-documenting contract between HCL and Go.
-    * `input {}` and `output {}` define the interface of each runner. So the configuration will be statically checked before execution.
+    Final Architecture Plan
+This architecture creates a robust, type-safe contract between the HCL configuration and the Go code. It separates the definition of a runner from its execution, making the system more modular and self-documenting.
+
+1. The Runner Definition (The runner Block)
+
+A runner's public API is now defined in HCL files located within its module directory (e.g., modules/http_request/).
+
+Discovery: The application will find these definitions by recursively scanning the modules/ directory at startup.
+
+Structure: The definition is wrapped in a runner "type" {} block.
+
+Example Definition (modules/http_request/manifest.hcl):
+
+Terraform
+runner "http_request" {
+  description = "Executes a simple HTTP request."
+
+  input "url" {
+    type        = string
+    description = "The URL to send the request to."
+  }
+
+  input "method" {
+    type        = string
+    description = "The HTTP method to use."
+    optional    = true
+    default     = "GET"
+  }
+
+  output "status_code" {
+    type        = number
+    description = "The HTTP status code of the response."
+  }
+
+  lifecycle {
+    on_run = "OnRunHttpRequest"
+  }
+}
+2. The Execution Instance (The step Block)
+
+A user executes a runner in their grid file by using a step block. This creates an instance of a defined runner.
+
+Structure: A step "type" "name" {} block is used to call a runner.
+
+arguments {} Block: Provides the actual values for the inputs defined in the runner manifest.
+
+Dependencies: Uses depends_on and HCL interpolation (${step.other_step.output.field}) to build the DAG.
+
+Example Execution (my_test.hcl):
+
+Terraform
+step "http_request" "get_homepage" {
+  arguments {
+    url = "https://example.com"
+  }
+}
+3. The Go Handler Implementation
+
+The Go code acts as a library of handler functions that are explicitly registered with the engine.
+
+Registration: Each handler is registered by its string name in a global map using Go's init() function (e.g., engine.Register("OnRunHttpRequest", OnRunHttpRequest)).
+
+Stateful Signatures: The handlers use a standard signature that passes state between lifecycle events.
+
+on_start creates a state object: func(...) (*State, error)
+
+on_run receives that state: func(state *State, ...) (*Output, error)
+
+on_end also receives the state for cleanup: func(state *State) error
+
+Typed I/O: Handlers use native Go structs for inputs and outputs. Output structs must use cty:"snake_case_name" tags to expose their fields to HCL.
+
+4. The Executor's Role (The Bridge)
+
+The executor connects the HCL configuration to the Go logic.
+
+Validation: Before running, the executor performs a pre-flight check, validating the arguments in each step against the input schema of the corresponding runner. This catches errors early.
+
+State Management: It calls the on_start handler, captures the returned *State object, and passes it to on_run and on_end for that specific step instance.
+
+Data Flow:
+
+It decodes the HCL arguments into the typed Go *Input struct for the handler.
+
+After the handler returns a Go *Output struct, the executor uses cty.ToValue() to convert it into a cty.Value. This makes the output available to other steps in the DAG.
 
 
-* **Implement New Go Handler Signature & Lifecycle**:
-    * Redefine the primary `engine.Runner` interface. The current `Run(m Module, ctx *hcl.EvalContext) (cty.Value, error)` will be replaced.
-    * The new signature will be: `func OnRun(ctx context.Context, runnerCtx *RunnerContext, input *RunnerInput) (*RunnerOutput, error)`.
-        * **`context.Context`**: For cancellation, timeouts, and deadlines. This will be plumbed from `main` through the executor to every handler, making the system robust and responsive.
-        * **`*RunnerContext`**: A new struct containing execution metadata (e.g., runner ID, status, logger instance).
-        * **`*RunnerInput` / `*RunnerOutput`**: Auto-generated, type-safe structs based on the HCL `input` and `output` schemas, eliminating manual `cty.Value` conversion.
-
-#### 2. Fix Critical Build & CI/CD Flaws
-All items have been fixed
-
-#### 3. Address Performance & Concurrency
-Improve the performance and scalability of the core engine and runners.
-
-* **Implement Shared HTTP Clients**:
+* **Implement Shared resources between runners**:
     * **Problem**: The `http-request` and `s3` runners create a new `http.Client` for every single execution. This is inefficient as it prevents TCP connection reuse (Keep-Alive).
     * **Fix**: Refactor these runners to use a shared, package-level `http.Client` instance, improving performance for high-throughput tests.
 
@@ -70,3 +138,91 @@ This is a list of features and less critical issues that are planned but not yet
 
 ### Long-Term Vision ✨
 * **Distributed Execution**: Architect `burstgridgo` to run in a controller/agent mode to enable massive-scale load tests orchestrated from a single control plane.
+
+
+
+Final Architecture Plan
+This architecture creates a robust, type-safe contract between the HCL configuration and the Go code. It separates the definition of a runner from its execution, making the system more modular and self-documenting.
+
+1. The Runner Definition (The runner Block)
+
+A runner's public API is now defined in HCL files located within its module directory (e.g., modules/http_request/).
+
+Discovery: The application will find these definitions by recursively scanning the modules/ directory at startup.
+
+Structure: The definition is wrapped in a runner "type" {} block.
+
+Example Definition (modules/http_request/manifest.hcl):
+
+Terraform
+runner "http_request" {
+  description = "Executes a simple HTTP request."
+
+  input "url" {
+    type        = string
+    description = "The URL to send the request to."
+  }
+
+  input "method" {
+    type        = string
+    description = "The HTTP method to use."
+    optional    = true
+    default     = "GET"
+  }
+
+  output "status_code" {
+    type        = number
+    description = "The HTTP status code of the response."
+  }
+
+  lifecycle {
+    on_run = "OnRunHttpRequest"
+  }
+}
+2. The Execution Instance (The step Block)
+
+A user executes a runner in their grid file by using a step block. This creates an instance of a defined runner.
+
+Structure: A step "type" "name" {} block is used to call a runner.
+
+arguments {} Block: Provides the actual values for the inputs defined in the runner manifest.
+
+Dependencies: Uses depends_on and HCL interpolation (${step.other_step.output.field}) to build the DAG.
+
+Example Execution (my_test.hcl):
+
+Terraform
+step "http_request" "get_homepage" {
+  arguments {
+    url = "https://example.com"
+  }
+}
+3. The Go Handler Implementation
+
+The Go code acts as a library of handler functions that are explicitly registered with the engine.
+
+Registration: Each handler is registered by its string name in a global map using Go's init() function (e.g., engine.Register("OnRunHttpRequest", OnRunHttpRequest)).
+
+Stateful Signatures: The handlers use a standard signature that passes state between lifecycle events.
+
+on_start creates a state object: func(...) (*State, error)
+
+on_run receives that state: func(state *State, ...) (*Output, error)
+
+on_end also receives the state for cleanup: func(state *State) error
+
+Typed I/O: Handlers use native Go structs for inputs and outputs. Output structs must use cty:"snake_case_name" tags to expose their fields to HCL.
+
+4. The Executor's Role (The Bridge)
+
+The executor connects the HCL configuration to the Go logic.
+
+Validation: Before running, the executor performs a pre-flight check, validating the arguments in each step against the input schema of the corresponding runner. This catches errors early.
+
+State Management: It calls the on_start handler, captures the returned *State object, and passes it to on_run and on_end for that specific step instance.
+
+Data Flow:
+
+It decodes the HCL arguments into the typed Go *Input struct for the handler.
+
+After the handler returns a Go *Output struct, the executor uses cty.ToValue() to convert it into a cty.Value. This makes the output available to other steps in the DAG.
