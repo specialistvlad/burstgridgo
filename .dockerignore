@@ -21,5 +21,4 @@ local.*
 .cache/go-build/
 
 # Test files and build artifacts
-*_test.go
 /out/

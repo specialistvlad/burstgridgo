@@ -17,7 +17,7 @@ First off, thank you for considering contributing! This project is driven by the
 make dev grid=examples/dev.hcl
 ```
 
-**Running Tests**: Before submitting a contribution, please ensure all tests and linters pass.
+**Running Tests**: Before submitting a contribution, please ensure all tests and linters pass. This is crucial as our CI pipeline and production Docker build will execute this same test suite.
 
 To run the test suite:
 ```sh
