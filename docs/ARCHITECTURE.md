@@ -1,80 +1,70 @@
 # Architecture
-This document provides a deeper look into the internal architecture of `burstgridgo`. Understanding these concepts is essential for contributing new features or runners.
 
-## Core Execution Flow
-The application follows a simple but powerful execution flow, designed for concurrency and extensibility.
+This document provides a deep look into the internal architecture of `burstgridgo`. Understanding these concepts is essential for contributing new features or runners.
 
-[DIAGRAM: Core_Execution_Flow]
+The architecture is designed to be **declarative and extensible**. It cleanly separates the **definition** of a task (a `runner`'s public API) from its **implementation** (a Go `handler` function) and its **execution** (a `step` block in a user's grid).
 
-1.  **HCL Parsing**: All `.hcl` files in the grid path are parsed into a flat list of module definitions.
-2.  **DAG Construction**: A Directed Acyclic Graph (DAG) is built from the modules, representing the execution plan.
-3.  **Concurrent Execution**: A worker pool executes the nodes of the DAG as their dependencies are met.
-4.  **Telemetry & Reporting**: Results from the executor are fed to the TUI renderer and any configured telemetry exporters (OTLP, Prometheus).
+---
 
-## Anatomy of a Grid Run
+## The Core Components
 
-### 1. HCL Parsing
-The engine first parses all HCL files. A critical step in this phase is the expansion of *meta-arguments*. Any module with `count` or `for_each` is expanded into multiple, distinct module instances before the graph is built. This is how looping and conditional logic are handled.
+There are three key concepts you must understand: the **Runner Definition**, the **Go Handler**, and the **Step**.
 
-### 2. DAG Construction
-Once the final list of module instances is ready, the graph is constructed. Dependencies between nodes are determined in two ways:
-* **Explicit Dependencies**: A module that uses the `depends_on` attribute.
-* **Implicit Dependencies**: A module that references the output of another module in an expression (e.g., `${module.A.output}`).
+### 1. The Runner Definition (`manifest.hcl`)
 
-Before execution, the graph is validated to ensure there are no circular dependencies.
+A Runner Definition is a `.hcl` file that defines the public API or *schema* for a runner. It specifies what inputs it accepts, what outputs it produces, and which Go function to call. These files live inside each module's directory (e.g., `modules/http_request/manifest.hcl`).
 
-### 3. Executor
-The executor manages a pool of concurrent workers. It identifies all nodes in the graph with no dependencies and adds them to a work queue. When a worker finishes executing a module, it marks the node as complete, and the executor then identifies any new nodes whose dependencies are now fully met, adding them to the queue.
+* **`runner "type" {}`**: The main block defining the runner's type.
+* **`input "name" {}`**: Defines an input argument, its type, and whether it's optional.
+* **`output "name" {}`**: Defines a value that the runner will produce.
+* **`lifecycle {}`**: Maps an execution event (like `on_run`) to the registered name of a Go handler.
 
-## Building a Custom Runner
-`burstgridgo` is a framework, and its primary extension point is the `Runner` interface.
+[Placeholder: Example of a runner "http_request" definition from a manifest.hcl file, showing input, output, and lifecycle blocks.]
 
-### The `Runner` Interface
-To create a new runner, you must implement the `engine.Runner` interface in Go.
-```go
-// From: ./internal/engine/module.go
+### 2. The Go Handler (`module.go`)
 
-// Runner defines the interface that all modules must implement to be executable.
-type Runner interface {
-	// Run now accepts an EvalContext to resolve inputs and returns a cty.Value for its output.
-	Run(m Module, ctx *hcl.EvalContext) (cty.Value, error)
-}
-```
-* **`m Module`**: Provides access to the HCL configuration for this module instance.
-* **`ctx *hcl.EvalContext`**: Used to evaluate HCL expressions and access outputs from dependencies.
+This is the Go code that implements the runner's logic. It's a standard Go function that takes a context and a pointer to an `Input` struct, and returns a `cty.Value` and an `error`.
 
-The function returns a `cty.Value` as its output and an `error` if it fails.
+* **`Input` struct**: A Go struct that maps to the `input` blocks from the manifest. HCL tags (`hcl:"..."`) are used for decoding.
+* **Handler function**: The function signature is `func(ctx context.Context, input *Input) (any, error)`. The `any` return value must be a `cty.Value` or `nil`.
+* **Registration**: The handler is registered with the engine in an `init()` block, associating its string name (from the `lifecycle` block) with the function itself.
 
-### Registration
-You must register your runner in an `init()` function within your runner's package to make it available to the HCL engine.
+[Placeholder: Example of a Go handler implementation from a module.go file, showing the Input struct, the OnRunHttpRequest function, and the init() registration block.]
 
-### Managing Dependencies
-If your runner requires third-party Go packages, add the `import` statement to your code and run the following command from the project root. This will add the dependency to the project's `go.mod` file.
-```sh
-go mod tidy
-```
+### 3. The Step (User Grid File)
 
-### Designing Complex, Stateful Runners
-For complex protocols like Socket.IO or gRPC streams, a single runner can act as a mini-orchestrator by defining its own internal Domain-Specific Language (DSL) using nested HCL blocks.
+A `step` is an **instance** of a runner that a user defines in their grid file (e.g., `my_test.hcl`). It tells the engine to execute a specific runner with specific arguments.
 
-The runner's `Run` method is responsible for parsing these nested blocks and executing them in the correct sequence, managing its own internal state (e.g., an active connection).
-```go
-// From: ./modules/socketio/module.go
+* **`step "type" "name" {}`**: The block that creates an execution step. The `"type"` must match a defined `runner` type, and the `"name"` is a unique identifier for this instance.
+* **`arguments {}`**: This block contains the actual values for the `input`s defined in the runner's manifest.
+* **`depends_on = [...]`**: Explicitly defines dependencies on other steps.
 
-// Config defines the HCL structure for this module.
-type Config struct {
-	URL                string    `hcl:"url"`
-	Namespace          string    `hcl:"namespace,optional"`
-	OnEvent            string    `hcl:"on_event"`
-	EmitEvent          string    `hcl:"emit_event,optional"`
-	EmitData           cty.Value `hcl:"emit_data,optional"`
-	Timeout            string    `hcl:"timeout,optional"`
-	InsecureSkipVerify bool      `hcl:"insecure_skip_verify,optional"`
-}
-```
+[Placeholder: Example of a user's grid file showing a step "http_request" and a dependent step "print" that uses its output.]
 
-## Plugin Ecosystem
-There are two primary ways to add a custom runner to the project.
+---
 
-* **In-Project Method**: Clone the main `burstgridgo` repository and add your runner code directly to the `./modules` directory. This is the simplest method.
-* **Advanced Method (The Vision)**: In the future, a standalone `bggo-builder` tool will allow you to compile a custom `burstgridgo` binary with third-party runners without cloning the main project.
+## Execution Flow
+
+Here is how the components work together when the application runs:
+
+1.  **Startup: Discovery & Registration**
+    * The engine calls `engine.DiscoverRunners()` to scan the `modules/` directory. It parses all `manifest.hcl` files and populates a `DefinitionRegistry` map, keyed by runner type (e.g., `"http_request"`).
+    * At the same time, Go's runtime executes the `init()` function in each `module.go` file. These functions call `engine.RegisterHandler()`, populating a `HandlerRegistry` map that links handler names (e.g., `"OnRunHttpRequest"`) to the actual Go functions.
+
+2.  **Grid Parsing & DAG Construction**
+    * The engine parses the user's grid file(s) into a list of `*engine.Step` structs.
+    * The `dag.NewGraph()` function processes this list, building a dependency graph. It creates nodes for each step and adds edges for both explicit (`depends_on`) and implicit (`step.A.output.B`) dependencies. A cycle check is performed.
+
+3.  **Step Execution (The Executor's Role)**
+    * The DAG executor starts a pool of workers and feeds them nodes that have no pending dependencies.
+    * When a worker executes a step (e.g., `step "http_request" "get_homepage"`):
+        1.  It looks up the `RunnerDefinition` for `"http_request"` in the `DefinitionRegistry`.
+        2.  It finds the handler name `"OnRunHttpRequest"` from the definition's `lifecycle` block.
+        3.  It looks up the `OnRunHttpRequest` function in the `HandlerRegistry`.
+        4.  It builds an HCL evaluation context. For any dependencies of this step, it takes their raw output (e.g., a `cty.Value`) and makes it available under the `step.<dep_name>.output` variable.
+        5.  It decodes the `arguments` block from the HCL into the Go `Input` struct.
+        6.  It calls the Go handler function.
+        7.  The handler returns a direct `cty.Value` (e.g., `{"status_code": 200, "body": "..."}`).
+        8.  The executor stores this `cty.Value` as the output of the "get_homepage" node, marking it as complete. This may unblock other steps that depend on it.
+
+This process repeats until all nodes in the DAG are complete.
