@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"mime"
@@ -26,7 +27,7 @@ type Config struct {
 }
 
 // handleUpload contains the logic for uploading a file to a pre-signed URL.
-func handleUpload(config *Config, logger *slog.Logger) (cty.Value, error) {
+func handleUpload(ctx context.Context, config *Config, logger *slog.Logger) (cty.Value, error) {
 	file, err := os.Open(config.SourcePath)
 	if err != nil {
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to open source file '%s': %w", config.SourcePath, err)
@@ -38,7 +39,7 @@ func handleUpload(config *Config, logger *slog.Logger) (cty.Value, error) {
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to get file stats for '%s': %w", config.SourcePath, err)
 	}
 
-	req, err := http.NewRequest(http.MethodPut, config.UploadURL, file)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, config.UploadURL, file)
 	if err != nil {
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to create S3 upload request: %w", err)
 	}
@@ -71,9 +72,9 @@ func handleUpload(config *Config, logger *slog.Logger) (cty.Value, error) {
 	}), nil
 }
 
-func (r *S3Runner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
+func (r *S3Runner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
 	var config Config
-	if diags := gohcl.DecodeBody(mod.Body, ctx, &config); diags.HasErrors() {
+	if diags := gohcl.DecodeBody(mod.Body, evalCtx, &config); diags.HasErrors() {
 		return cty.NullVal(cty.DynamicPseudoType), diags
 	}
 
@@ -81,7 +82,7 @@ func (r *S3Runner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, erro
 
 	switch strings.ToLower(config.Action) {
 	case "upload":
-		return handleUpload(&config, logger)
+		return handleUpload(ctx, &config, logger)
 	case "download":
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("s3 action 'download' is not yet implemented")
 	default:

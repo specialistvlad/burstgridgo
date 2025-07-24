@@ -1,6 +1,7 @@
 package dag
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -27,6 +28,10 @@ func (e *Executor) Run() error {
 	readyChan := make(chan *Node, len(e.Graph.Nodes))
 	defer close(readyChan)
 
+	// Create a top-level context for the entire run.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cancellation is signaled on exit.
+
 	// Find all nodes with no dependencies to start.
 	for _, node := range e.Graph.Nodes {
 		if node.depCount.Load() == 0 {
@@ -38,7 +43,7 @@ func (e *Executor) Run() error {
 
 	const numWorkers = 4 // This could be configurable later
 	for i := 0; i < numWorkers; i++ {
-		go e.worker(readyChan)
+		go e.worker(ctx, readyChan)
 	}
 
 	e.wg.Wait()
@@ -57,10 +62,17 @@ func (e *Executor) Run() error {
 	return nil
 }
 
-func (e *Executor) worker(readyChan chan *Node) {
+func (e *Executor) worker(ctx context.Context, readyChan chan *Node) {
 	for node := range readyChan {
+		// Stop processing new nodes if the context has been canceled.
+		if ctx.Err() != nil {
+			node.State.Store(int32(Failed))
+			e.wg.Done()
+			continue
+		}
+
 		// If execution fails, we stop processing this branch of the graph.
-		if err := e.executeNode(node); err != nil {
+		if err := e.executeNode(ctx, node); err != nil {
 			continue
 		}
 
@@ -74,7 +86,7 @@ func (e *Executor) worker(readyChan chan *Node) {
 	}
 }
 
-func (e *Executor) executeNode(node *Node) error {
+func (e *Executor) executeNode(ctx context.Context, node *Node) error {
 	defer e.wg.Done()
 
 	logger := slog.With("module", node.Name, "runner", node.Module.Runner)
@@ -82,7 +94,7 @@ func (e *Executor) executeNode(node *Node) error {
 
 	node.State.Store(int32(Running))
 
-	ctx := e.buildEvalContext(node)
+	evalCtx := e.buildEvalContext(node)
 
 	runner, ok := engine.Registry[node.Module.Runner]
 	if !ok {
@@ -93,7 +105,8 @@ func (e *Executor) executeNode(node *Node) error {
 		return err
 	}
 
-	output, err := runner.Run(*node.Module, ctx)
+	// Pass the context to the runner's Run method.
+	output, err := runner.Run(ctx, *node.Module, evalCtx)
 	if err != nil {
 		logger.Error("Module execution failed", "error", err)
 		node.Error = err

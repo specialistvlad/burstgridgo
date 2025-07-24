@@ -1,6 +1,7 @@
 package print
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -17,9 +18,9 @@ type Config struct {
 	Input cty.Value `hcl:"input"`
 }
 
-func (r *PrintRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
+func (r *PrintRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
 	var config Config
-	if diags := gohcl.DecodeBody(mod.Body, ctx, &config); diags.HasErrors() {
+	if diags := gohcl.DecodeBody(mod.Body, evalCtx, &config); diags.HasErrors() {
 		return cty.NullVal(cty.DynamicPseudoType), diags
 	}
 

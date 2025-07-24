@@ -1,6 +1,7 @@
 package socketio
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log/slog"
@@ -117,9 +118,9 @@ func interfaceToCtyValue(data interface{}) (cty.Value, error) {
 	}
 }
 
-func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
+func (r *SocketIoRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
 	var config Config
-	if diags := gohcl.DecodeBody(mod.Body, ctx, &config); diags.HasErrors() {
+	if diags := gohcl.DecodeBody(mod.Body, evalCtx, &config); diags.HasErrors() {
 		return cty.NullVal(cty.DynamicPseudoType), diags
 	}
 
@@ -193,6 +194,9 @@ func (r *SocketIoRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value
 	})
 
 	select {
+	case <-ctx.Done():
+		io.Disconnect()
+		return cty.NullVal(cty.DynamicPseudoType), ctx.Err()
 	case result := <-done:
 		logger.Debug("Event loop finished, disconnecting...")
 		io.Disconnect()

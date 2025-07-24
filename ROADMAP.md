@@ -33,10 +33,6 @@ This is the highest priority. We will refactor the core engine and runner interf
         * **`*RunnerContext`**: A new struct containing execution metadata (e.g., runner ID, status, logger instance).
         * **`*RunnerInput` / `*RunnerOutput`**: Auto-generated, type-safe structs based on the HCL `input` and `output` schemas, eliminating manual `cty.Value` conversion.
 
-* **Overhaul the Executor to Support the New Architecture**:
-    * Modify the `dag.Executor` to create and manage the `context.Context` for each run.
-    
-
 #### 2. Fix Critical Build & CI/CD Flaws
 All items have been fixed
 

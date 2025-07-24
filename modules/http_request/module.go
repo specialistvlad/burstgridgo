@@ -1,6 +1,7 @@
 package http_request
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -17,8 +18,8 @@ import (
 type HTTPRequestRunner struct{}
 
 // Run executes the logic for an http_request module.
-func (r *HTTPRequestRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
-	config, err := DecodeConfig(mod.Body, ctx)
+func (r *HTTPRequestRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
+	config, err := DecodeConfig(mod.Body, evalCtx)
 	if err != nil {
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to decode config: %w", err)
 	}
@@ -32,7 +33,7 @@ func (r *HTTPRequestRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Va
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequest(method, config.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, method, config.URL, nil)
 	if err != nil {
 		return cty.NullVal(cty.DynamicPseudoType), fmt.Errorf("failed to create request: %w", err)
 	}

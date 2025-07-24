@@ -1,6 +1,7 @@
 package help
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -13,7 +14,7 @@ import (
 type HelpRunner struct{}
 
 // Run executes the logic for the help module.
-func (r *HelpRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
+func (r *HelpRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
 	helpText := `
 BurstGridGo - A declarative, concurrency-first load testing tool.
 
@@ -32,13 +33,13 @@ Arguments:
 Options:
   -g, --grid string
     Explicitly specify the path to the grid file or directory.
-  
+
   --log-format string
     Log output format. Options: 'text' (default) or 'json'.
 
   --log-level string
     Set the logging level. Options: 'debug', 'info' (default), 'warn', 'error'.
-  
+
   --healthcheck-port int
     Port for the HTTP health check server. (default: 8080)
 

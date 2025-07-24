@@ -1,6 +1,7 @@
 package env_vars
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"strings"
@@ -12,7 +13,7 @@ import (
 
 type EnvVarsRunner struct{}
 
-func (r *EnvVarsRunner) Run(mod engine.Module, ctx *hcl.EvalContext) (cty.Value, error) {
+func (r *EnvVarsRunner) Run(ctx context.Context, mod engine.Module, evalCtx *hcl.EvalContext) (cty.Value, error) {
 	envMap := make(map[string]cty.Value)
 	for _, e := range os.Environ() {
 		pair := strings.SplitN(e, "=", 2)
