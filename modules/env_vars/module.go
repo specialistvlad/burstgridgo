@@ -18,15 +18,10 @@ func OnRunEnvVars(ctx context.Context, input any) (any, error) {
 		}
 	}
 
-	// This is the data we want to expose as the "output" block.
-	outputObject := cty.ObjectVal(map[string]cty.Value{
-		"all": cty.MapVal(envMap),
-	})
-
-	// CORRECTED: Wrap the output object in another object with a single "output" key.
-	// This makes the final data structure match the HCL expression `step.<name>.output.all`.
+	// This is the direct data we want to expose as the runner's output.
+	// The executor will handle namespacing it under the "output" key.
 	return cty.ObjectVal(map[string]cty.Value{
-		"output": outputObject,
+		"all": cty.MapVal(envMap),
 	}), nil
 }
 

@@ -11,7 +11,11 @@ import (
 	"strings"
 
 	"github.com/vk/burstgridgo/internal/engine"
+	"github.com/zclconf/go-cty/cty"
 )
+
+// httpClient is a shared client for all S3 runner executions to reuse TCP connections.
+var httpClient = &http.Client{}
 
 // Input defines the arguments for the s3 runner.
 type Input struct {
@@ -20,14 +24,9 @@ type Input struct {
 	UploadURL  string `hcl:"upload_url,optional"`
 }
 
-// Output defines the values produced by the s3 runner.
-type Output struct {
-	Success bool   `cty:"success"`
-	Status  string `cty:"status"`
-}
-
 // handleUpload contains the logic for uploading a file to a pre-signed URL.
-func handleUpload(ctx context.Context, input *Input) (*Output, error) {
+// It now returns (any, error) to be compatible with the handler signature.
+func handleUpload(ctx context.Context, input *Input) (any, error) {
 	logger := slog.With("action", "upload")
 
 	file, err := os.Open(input.SourcePath)
@@ -55,9 +54,7 @@ func handleUpload(ctx context.Context, input *Input) (*Output, error) {
 
 	logger.Info("Uploading file to S3", "source", input.SourcePath, "size", stat.Size(), "contentType", contentType)
 
-	// NOTE: We will address the shared http.Client in a later step as per our roadmap.
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute S3 upload request: %w", err)
 	}
@@ -69,14 +66,15 @@ func handleUpload(ctx context.Context, input *Input) (*Output, error) {
 
 	logger.Info("Successfully uploaded file", "status", resp.Status)
 
-	return &Output{
-		Success: true,
-		Status:  resp.Status,
-	}, nil
+	// Return a cty.Value object directly with the runner's output.
+	return cty.ObjectVal(map[string]cty.Value{
+		"success": cty.BoolVal(true),
+		"status":  cty.StringVal(resp.Status),
+	}), nil
 }
 
 // OnRunS3 is the handler for the 's3' runner's on_run lifecycle event.
-func OnRunS3(ctx context.Context, input *Input) (*Output, error) {
+func OnRunS3(ctx context.Context, input *Input) (any, error) {
 	switch strings.ToLower(input.Action) {
 	case "upload":
 		return handleUpload(ctx, input)

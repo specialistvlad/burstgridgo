@@ -50,15 +50,9 @@ func OnRunHttpRequest(ctx context.Context, input *Input) (any, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Manually construct the cty.Value for the output.
-	outputObject := cty.ObjectVal(map[string]cty.Value{
+	return cty.ObjectVal(map[string]cty.Value{
 		"status_code": cty.NumberIntVal(int64(resp.StatusCode)),
 		"body":        cty.StringVal(string(bodyBytes)),
-	})
-
-	// Wrap the output in an "output" attribute to match the HCL access pattern.
-	return cty.ObjectVal(map[string]cty.Value{
-		"output": outputObject,
 	}), nil
 }
 

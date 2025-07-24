@@ -209,7 +209,9 @@ func (e *Executor) buildEvalContext(node *Node) *hcl.EvalContext {
 	stepOutputs := make(map[string]cty.Value)
 
 	for depName, depNode := range node.Deps {
-		stepOutputs[depName] = depNode.Output
+		stepOutputs[depName] = cty.ObjectVal(map[string]cty.Value{
+			"output": depNode.Output,
+		})
 	}
 
 	vars["step"] = cty.ObjectVal(stepOutputs)

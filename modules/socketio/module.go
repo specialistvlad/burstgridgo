@@ -133,9 +133,8 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 		}
 
 		outputObject := cty.ObjectVal(map[string]cty.Value{"response_data": responseData})
-		finalValue := cty.ObjectVal(map[string]cty.Value{"output": outputObject})
 		logger.Debug("Successfully processed success event, sending result to channel")
-		done <- opResult{value: finalValue}
+		done <- opResult{value: outputObject}
 	})
 
 	// --- Execution Block ---
