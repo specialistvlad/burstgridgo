@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/hashicorp/hcl/v2" // Corrected hcl import
+	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -22,7 +22,7 @@ const (
 // Node is a single node in the execution graph.
 type Node struct {
 	Name       string
-	Step       *engine.Step // <-- Changed from Module
+	Step       *engine.Step
 	Deps       map[string]*Node
 	Dependents map[string]*Node
 	depCount   atomic.Int32
@@ -106,9 +106,8 @@ func NewGraph(steps []*engine.Step) (*Graph, error) {
 		}
 
 		// 2. Implicit dependencies from HCL variable references.
-		// Check if Arguments block exists before trying to access its Body.
 		if node.Step.Arguments != nil {
-			attrs, diags := node.Step.Arguments.Body.JustAttributes() // Access the .Body field
+			attrs, diags := node.Step.Arguments.Body.JustAttributes()
 			if diags.HasErrors() {
 				return nil, diags
 			}
@@ -116,10 +115,11 @@ func NewGraph(steps []*engine.Step) (*Graph, error) {
 			for _, attr := range attrs {
 				vars := attr.Expr.Variables()
 				for _, v := range vars {
-					// This logic needs to be updated to look for `step.` instead of `module.`
-					// For now, let's assume it still works with a `step` variable.
-					if len(v) > 1 && v.RootName() == "step" { // <-- Changed from "module"
-						depName := v[1].(hcl.TraverseAttr).Name
+					// Check for traversals starting with `step.`
+					if len(v) > 1 && v.RootName() == "step" {
+						// The dependency name is the first attribute after "step".
+						// For an expression like `step.read_env.output`, this is "read_env".
+						depName := v[1].(hcl.TraverseAttr).Name // <-- CORRECTED THIS LINE
 						depNode, ok := graph.Nodes[depName]
 						if !ok {
 							return nil, fmt.Errorf("step '%s' refers to non-existent step '%s'", node.Name, depName)

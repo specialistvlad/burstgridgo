@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
-	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 // Executor runs the tasks in a graph.
@@ -166,8 +165,6 @@ func (e *Executor) executeNode(ctx context.Context, node *Node) error {
 		}
 	}
 
-	// This is a simplified call for now. It assumes a signature of func(ctx, *Input) (*Output, error)
-	// and doesn't yet handle the state object.
 	results := handlerFunc.Call(callArgs)
 	outputStruct := results[0].Interface()
 	errResult := results[1].Interface()
@@ -180,11 +177,16 @@ func (e *Executor) executeNode(ctx context.Context, node *Node) error {
 		return err
 	}
 
-	// 5. Convert the Go output struct back to a cty.Value for downstream steps.
-	if outputStruct != nil && !reflect.ValueOf(outputStruct).IsNil() {
-		outputVal, err := gocty.ToCtyValue(outputStruct, cty.DynamicPseudoType)
-		if err != nil {
-			err := fmt.Errorf("failed to convert runner output to HCL value: %w", err)
+	// 5. Assign the handler's output to the node.
+	// We no longer need to perform a risky dynamic conversion. The new contract
+	// requires handlers to return a cty.Value directly.
+	if outputStruct != nil {
+		// We can safely cast the result to cty.Value.
+		outputVal, ok := outputStruct.(cty.Value)
+		if !ok {
+			// This would indicate a developer error—a runner returned a value
+			// that was not nil and not a cty.Value, violating the contract.
+			err := fmt.Errorf("runner returned an invalid output type: expected cty.Value but got %T", outputStruct)
 			logger.Error("Step execution failed", "error", err)
 			node.Error = err
 			node.State.Store(int32(Failed))
@@ -192,6 +194,7 @@ func (e *Executor) executeNode(ctx context.Context, node *Node) error {
 		}
 		node.Output = outputVal
 	} else {
+		// If the runner returns nil, the output is cty.NilVal.
 		node.Output = cty.NilVal
 	}
 

@@ -6,30 +6,33 @@ import (
 	"strings"
 
 	"github.com/vk/burstgridgo/internal/engine"
+	"github.com/zclconf/go-cty/cty"
 )
 
-// Output defines the values produced by the env_vars runner.
-type Output struct {
-	All map[string]string `cty:"all"`
-}
-
-// OnRunEnvVars is the handler for the 'env_vars' runner's on_run lifecycle event.
-func OnRunEnvVars(ctx context.Context) (*Output, error) {
-	envMap := make(map[string]string)
+func OnRunEnvVars(ctx context.Context, input any) (any, error) {
+	envMap := make(map[string]cty.Value)
 	for _, e := range os.Environ() {
 		pair := strings.SplitN(e, "=", 2)
 		if len(pair) == 2 {
-			envMap[pair[0]] = pair[1]
+			envMap[pair[0]] = cty.StringVal(pair[1])
 		}
 	}
 
-	return &Output{All: envMap}, nil
+	// This is the data we want to expose as the "output" block.
+	outputObject := cty.ObjectVal(map[string]cty.Value{
+		"all": cty.MapVal(envMap),
+	})
+
+	// CORRECTED: Wrap the output object in another object with a single "output" key.
+	// This makes the final data structure match the HCL expression `step.<name>.output.all`.
+	return cty.ObjectVal(map[string]cty.Value{
+		"output": outputObject,
+	}), nil
 }
 
-// init registers the handler with the engine.
 func init() {
 	engine.RegisterHandler("OnRunEnvVars", &engine.RegisteredHandler{
-		NewInput: nil, // This runner takes no input.
+		NewInput: nil,
 		Fn:       OnRunEnvVars,
 	})
 }
