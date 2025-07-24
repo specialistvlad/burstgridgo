@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2" // Corrected hcl import
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -106,26 +106,29 @@ func NewGraph(steps []*engine.Step) (*Graph, error) {
 		}
 
 		// 2. Implicit dependencies from HCL variable references.
-		attrs, diags := node.Step.Arguments.JustAttributes()
-		if diags.HasErrors() {
-			return nil, diags
-		}
+		// Check if Arguments block exists before trying to access its Body.
+		if node.Step.Arguments != nil {
+			attrs, diags := node.Step.Arguments.Body.JustAttributes() // Access the .Body field
+			if diags.HasErrors() {
+				return nil, diags
+			}
 
-		for _, attr := range attrs {
-			vars := attr.Expr.Variables()
-			for _, v := range vars {
-				// This logic needs to be updated to look for `step.` instead of `module.`
-				// For now, let's assume it still works with a `step` variable.
-				if len(v) > 1 && v.RootName() == "step" { // <-- Changed from "module"
-					depName := v[1].(hcl.TraverseAttr).Name
-					depNode, ok := graph.Nodes[depName]
-					if !ok {
-						return nil, fmt.Errorf("step '%s' refers to non-existent step '%s'", node.Name, depName)
-					}
-					// Link them if not already linked
-					if _, exists := node.Deps[depName]; !exists {
-						node.Deps[depName] = depNode
-						depNode.Dependents[node.Name] = node
+			for _, attr := range attrs {
+				vars := attr.Expr.Variables()
+				for _, v := range vars {
+					// This logic needs to be updated to look for `step.` instead of `module.`
+					// For now, let's assume it still works with a `step` variable.
+					if len(v) > 1 && v.RootName() == "step" { // <-- Changed from "module"
+						depName := v[1].(hcl.TraverseAttr).Name
+						depNode, ok := graph.Nodes[depName]
+						if !ok {
+							return nil, fmt.Errorf("step '%s' refers to non-existent step '%s'", node.Name, depName)
+						}
+						// Link them if not already linked
+						if _, exists := node.Deps[depName]; !exists {
+							node.Deps[depName] = depNode
+							depNode.Dependents[node.Name] = node
+						}
 					}
 				}
 			}

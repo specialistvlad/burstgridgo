@@ -5,13 +5,19 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// StepArgs represents the content of the 'arguments' block within a step.
+// It exists solely to capture the hcl.Body of the arguments block.
+type StepArgs struct {
+	Body hcl.Body `hcl:",remain"` // Capture the entire body of the 'arguments' block
+}
+
 // Step represents a step block from a user's grid file.
 // It corresponds to the HCL: step "runner_type" "instance_name" { ... }
 type Step struct {
-	RunnerType string   `hcl:"runner_type,label"`
-	Name       string   `hcl:"instance_name,label"`
-	Arguments  hcl.Body `hcl:"arguments,block"`
-	DependsOn  []string `hcl:"depends_on,optional"`
+	RunnerType string    `hcl:"runner_type,label"`
+	Name       string    `hcl:"instance_name,label"`
+	Arguments  *StepArgs `hcl:"arguments,block"` // Now this correctly maps to the 'arguments' block
+	DependsOn  []string  `hcl:"depends_on,optional"`
 }
 
 // GridConfig represents the top-level structure of a user's grid file.

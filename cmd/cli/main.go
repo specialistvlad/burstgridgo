@@ -98,7 +98,9 @@ func main() {
 			{
 				Name:       "show_help",
 				RunnerType: "help",
-				Arguments:  hcl.EmptyBody(),
+				Arguments: &engine.StepArgs{ // Correctly initialize StepArgs struct
+					Body: hcl.EmptyBody(), // with an empty HCL body
+				},
 			},
 		}
 	}
@@ -110,9 +112,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- ADD THIS DEBUG LINE ---
 	slog.Info("Handlers registered:", "count", len(engine.HandlerRegistry), "keys", reflect.ValueOf(engine.HandlerRegistry).MapKeys())
-	// ---------------------------
 
 	// 6. Create an executor and run the graph.
 	if len(graph.Nodes) > 0 {

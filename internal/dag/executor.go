@@ -133,8 +133,14 @@ func (e *Executor) executeNode(ctx context.Context, node *Node) error {
 			node.State.Store(int32(Failed))
 			return err
 		}
+
+		// Check if the Arguments body is available before decoding
+		var argsBody hcl.Body
+		if node.Step.Arguments != nil { // Check if the Arguments struct exists
+			argsBody = node.Step.Arguments.Body
+		}
 		evalCtx := e.buildEvalContext(node)
-		if diags := gohcl.DecodeBody(node.Step.Arguments, evalCtx, inputStruct); diags.HasErrors() {
+		if diags := gohcl.DecodeBody(argsBody, evalCtx, inputStruct); diags.HasErrors() {
 			logger.Error("Step execution failed", "error", diags)
 			node.Error = diags
 			node.State.Store(int32(Failed))

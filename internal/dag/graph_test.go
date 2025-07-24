@@ -17,14 +17,14 @@ func TestNewGraph_CycleDetection(t *testing.T) {
 	// We use engine.Step as per the updated architecture.
 	stepA := &engine.Step{
 		Name:       "A",
-		RunnerType: "test", // Renamed from Runner to RunnerType
-		Arguments:  hcl.EmptyBody(),
+		RunnerType: "test",                                  // Renamed from Runner to RunnerType
+		Arguments:  &engine.StepArgs{Body: hcl.EmptyBody()}, // Initialize Arguments as *StepArgs
 		DependsOn:  []string{"B"},
 	}
 	stepB := &engine.Step{
 		Name:       "B",
-		RunnerType: "test", // Renamed from Runner to RunnerType
-		Arguments:  hcl.EmptyBody(),
+		RunnerType: "test",                                  // Renamed from Runner to RunnerType
+		Arguments:  &engine.StepArgs{Body: hcl.EmptyBody()}, // Initialize Arguments as *StepArgs
 		DependsOn:  []string{"A"},
 	}
 	steps := []*engine.Step{stepA, stepB} // Use a slice of *engine.Step
@@ -32,7 +32,7 @@ func TestNewGraph_CycleDetection(t *testing.T) {
 	// Act: Attempt to create a graph, which should fail.
 	_, err := NewGraph(steps) // Pass the slice of *engine.Step
 
-	// Assert: Check that an error indicating a cycle was returned.
+	// Assert: Check that an an error indicating a cycle was returned.
 	if err == nil {
 		t.Fatal("NewGraph should have returned an error for a cyclic dependency, but it did not.")
 	}
