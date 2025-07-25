@@ -5,7 +5,6 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/engine"
@@ -63,55 +62,15 @@ func main() {
 		go healthcheck.StartServer(cliOpts.HealthcheckPort)
 	}
 
-	// This will hold the combined configuration from all parsed files.
-	gridConfig := &engine.GridConfig{}
-
-	// 3. If a grid path is provided, find and parse the HCL files.
-	if cliOpts.GridPath != "" {
-		hclFiles, err := engine.ResolveGridPath(cliOpts.GridPath)
-		if err != nil {
-			slog.Error("Failed to resolve grid path", "path", cliOpts.GridPath, "error", err)
-			os.Exit(1)
-		}
-
-		if len(hclFiles) > 0 {
-			slog.Info("Found HCL files to process", "count", len(hclFiles), "path", cliOpts.GridPath)
-			for _, file := range hclFiles {
-				slog.Debug("Resolved HCL file", "path", file)
-			}
-
-			// Parse all files and merge them into a single config.
-			for _, file := range hclFiles {
-				cfg, err := engine.DecodeGridFile(file)
-				if err != nil {
-					slog.Warn("Failed to decode HCL file", "path", file, "error", err)
-					continue
-				}
-				// Append resources and steps from the parsed file.
-				gridConfig.Resources = append(gridConfig.Resources, cfg.Resources...)
-				gridConfig.Steps = append(gridConfig.Steps, cfg.Steps...)
-			}
-		}
+	// 3. Load, parse, and merge the grid configuration from the specified path.
+	// This single call replaces the previous block of file handling logic.
+	gridConfig, err := engine.LoadGridConfig(cliOpts.GridPath)
+	if err != nil {
+		slog.Error("Failed to load grid configuration", "error", err)
+		os.Exit(1)
 	}
 
-	// 4. If no steps were loaded, inject the help step.
-	if len(gridConfig.Steps) == 0 {
-		if cliOpts.GridPath != "" {
-			slog.Info("No steps found in path, displaying help.", "path", cliOpts.GridPath)
-		}
-		// Create a single step to run the help runner.
-		gridConfig.Steps = []*engine.Step{
-			{
-				Name:       "show_help",
-				RunnerType: "help",
-				Arguments: &engine.StepArgs{ // Correctly initialize StepArgs struct
-					Body: hcl.EmptyBody(), // with an empty HCL body
-				},
-			},
-		}
-	}
-
-	// 5. Build the dependency graph.
+	// 4. Build the dependency graph.
 	graph, err := dag.NewGraph(gridConfig)
 	if err != nil {
 		slog.Error("Failed to build dependency graph", "error", err)
@@ -121,7 +80,7 @@ func main() {
 	slog.Info("Step handlers registered:", "count", len(engine.HandlerRegistry), "keys", reflect.ValueOf(engine.HandlerRegistry).MapKeys())
 	slog.Info("Asset handlers registered:", "count", len(engine.AssetHandlerRegistry), "keys", reflect.ValueOf(engine.AssetHandlerRegistry).MapKeys())
 
-	// 6. Create an executor and run the graph.
+	// 5. Create an executor and run the graph.
 	if len(graph.Nodes) > 0 {
 		slog.Info("🚀 Starting concurrent execution...")
 		executor := dag.NewExecutor(graph, nil, nil)
