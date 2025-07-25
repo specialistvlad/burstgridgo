@@ -1,9 +1,9 @@
 runner "print" {
-  description = "Prints a given HCL value to the console."
+  description = "Prints the contents of a map to the console."
 
   input "input" {
-    type        = any
-    description = "The value to be printed."
+    type        = map(string)
+    description = "The map of strings to be printed."
   }
 
   lifecycle {

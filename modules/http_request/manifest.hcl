@@ -1,6 +1,12 @@
 runner "http_request" {
   description = "Executes a simple HTTP request and returns the response."
 
+  # Declares that this runner needs a dependency providing an "http_client" asset.
+  # The key "client" maps to the field name in the Go handler's Deps struct.
+  uses "client" {
+    asset_type = "http_client"
+  }
+
   input "url" {
     type        = string
     description = "The URL to send the request to."

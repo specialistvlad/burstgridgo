@@ -28,6 +28,9 @@ type Input struct {
 	InsecureSkipVerify bool      `hcl:"insecure_skip_verify,optional"`
 }
 
+// Deps is an empty struct because this runner does not use any resources.
+type Deps struct{}
+
 // opResult is a private struct to safely pass results through the done channel.
 type opResult struct {
 	value cty.Value
@@ -35,7 +38,7 @@ type opResult struct {
 }
 
 // OnRunSocketIO is the handler for the 'socketio' runner's on_run lifecycle event.
-func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
+func OnRunSocketIO(ctx context.Context, deps *Deps, input *Input) (cty.Value, error) {
 	logger := slog.With("runner", "socketio", "url", input.URL, "onEvent", input.OnEvent, "emitEvent", input.EmitEvent)
 	logger.Debug("Handler started")
 	defer logger.Debug("Handler finished")
@@ -55,7 +58,7 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 
 	parsedURL, err := url.Parse(input.URL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
+		return cty.NilVal, fmt.Errorf("failed to parse URL: %w", err)
 	}
 
 	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
@@ -76,7 +79,6 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 	}()
 
 	// --- Event Listeners ---
-
 	io.OnAny(func(args ...any) {
 		if len(args) == 0 {
 			return
@@ -148,12 +150,12 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 			errMsg = "timed out while waiting for initial connection"
 		}
 		logger.Error("Operation context finished", "reason", opCtx.Err(), "detail", errMsg)
-		return nil, fmt.Errorf("%s", errMsg)
+		return cty.NilVal, fmt.Errorf("%s", errMsg)
 	case res := <-done:
 		logger.Debug("Result received from 'done' channel")
 		if res.err != nil {
 			logger.Error("Runner failed with an event-driven error", "error", res.err)
-			return nil, res.err
+			return cty.NilVal, res.err
 		}
 		logger.Debug("Runner succeeded")
 		return res.value, nil
@@ -164,11 +166,12 @@ func OnRunSocketIO(ctx context.Context, input *Input) (any, error) {
 func init() {
 	engine.RegisterHandler("OnRunSocketIO", &engine.RegisteredHandler{
 		NewInput: func() any { return new(Input) },
+		NewDeps:  func() any { return new(Deps) },
 		Fn:       OnRunSocketIO,
 	})
 }
 
-// ctyValueToInterface and interfaceToCtyValue helper functions remain the same.
+// ctyValueToInterface converts a cty.Value to a Go interface{}.
 func ctyValueToInterface(val cty.Value) (any, error) {
 	if !val.IsKnown() || val.IsNull() {
 		return nil, nil
@@ -213,6 +216,7 @@ func ctyValueToInterface(val cty.Value) (any, error) {
 	return nil, fmt.Errorf("unsupported cty.Type for conversion: %s", val.Type().FriendlyName())
 }
 
+// interfaceToCtyValue converts a Go interface{} to a cty.Value.
 func interfaceToCtyValue(data any) (cty.Value, error) {
 	if data == nil {
 		return cty.NullVal(cty.DynamicPseudoType), nil

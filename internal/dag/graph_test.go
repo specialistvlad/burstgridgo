@@ -1,5 +1,3 @@
-// ./internal/dag/graph_test.go
-
 package dag
 
 import (
@@ -14,25 +12,25 @@ func TestNewGraph_CycleDetection(t *testing.T) {
 	t.Parallel() // Mark this test as safe to run in parallel.
 
 	// Arrange: Create steps with a circular dependency (A -> B -> A).
-	// We use engine.Step as per the updated architecture.
+	// Use the full, unambiguous address for dependencies: "runner_type.instance_name".
 	stepA := &engine.Step{
 		Name:       "A",
-		RunnerType: "test",                                  // Renamed from Runner to RunnerType
-		Arguments:  &engine.StepArgs{Body: hcl.EmptyBody()}, // Initialize Arguments as *StepArgs
-		DependsOn:  []string{"B"},
+		RunnerType: "test",
+		Arguments:  &engine.StepArgs{Body: hcl.EmptyBody()},
+		DependsOn:  []string{"test.B"},
 	}
 	stepB := &engine.Step{
 		Name:       "B",
-		RunnerType: "test",                                  // Renamed from Runner to RunnerType
-		Arguments:  &engine.StepArgs{Body: hcl.EmptyBody()}, // Initialize Arguments as *StepArgs
-		DependsOn:  []string{"A"},
+		RunnerType: "test",
+		Arguments:  &engine.StepArgs{Body: hcl.EmptyBody()},
+		DependsOn:  []string{"test.A"},
 	}
-	steps := []*engine.Step{stepA, stepB} // Use a slice of *engine.Step
+	gridConfig := &engine.GridConfig{Steps: []*engine.Step{stepA, stepB}}
 
-	// Act: Attempt to create a graph, which should fail.
-	_, err := NewGraph(steps) // Pass the slice of *engine.Step
+	// Act: Attempt to create a graph, which should fail due to a cycle.
+	_, err := NewGraph(gridConfig)
 
-	// Assert: Check that an an error indicating a cycle was returned.
+	// Assert: Check that an error indicating a cycle was returned.
 	if err == nil {
 		t.Fatal("NewGraph should have returned an error for a cyclic dependency, but it did not.")
 	}

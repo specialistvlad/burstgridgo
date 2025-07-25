@@ -5,11 +5,14 @@ import (
 	"fmt"
 
 	"github.com/vk/burstgridgo/internal/engine"
+	"github.com/zclconf/go-cty/cty"
 )
 
+// Deps is an empty struct because this runner does not use any resources.
+type Deps struct{}
+
 // OnRunHelp is the handler for the 'help' runner's on_run lifecycle event.
-// It matches the standard signature func(ctx, input) (output, error).
-func OnRunHelp(ctx context.Context, input any) (any, error) {
+func OnRunHelp(ctx context.Context, deps *Deps, input any) (cty.Value, error) {
 	helpText := `
 BurstGridGo - A declarative, concurrency-first load testing tool.
 
@@ -36,16 +39,17 @@ Options:
     Set the logging level. Options: 'debug', 'info' (default), 'warn', 'error'.
 
   --healthcheck-port int
-    Port for the HTTP health check server. (default: 8080)
+    Port for the HTTP health check server. 0 to disabled. (default: 0)
 `
 	fmt.Println(helpText)
-	return nil, nil
+	return cty.NilVal, nil
 }
 
 // init registers the handler with the engine.
 func init() {
 	engine.RegisterHandler("OnRunHelp", &engine.RegisteredHandler{
-		NewInput: nil, // This handler takes no input.
+		NewInput: func() any { return nil }, // No 'arguments' block.
+		NewDeps:  func() any { return new(Deps) },
 		Fn:       OnRunHelp,
 	})
 }

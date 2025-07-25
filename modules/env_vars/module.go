@@ -9,7 +9,11 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
-func OnRunEnvVars(ctx context.Context, input any) (any, error) {
+// Deps is an empty struct because this runner does not use any resources.
+type Deps struct{}
+
+// OnRunEnvVars is the handler for the 'env_vars' runner.
+func OnRunEnvVars(ctx context.Context, deps *Deps, input any) (cty.Value, error) {
 	envMap := make(map[string]cty.Value)
 	for _, e := range os.Environ() {
 		pair := strings.SplitN(e, "=", 2)
@@ -18,16 +22,16 @@ func OnRunEnvVars(ctx context.Context, input any) (any, error) {
 		}
 	}
 
-	// This is the direct data we want to expose as the runner's output.
-	// The executor will handle namespacing it under the "output" key.
 	return cty.ObjectVal(map[string]cty.Value{
 		"all": cty.MapVal(envMap),
 	}), nil
 }
 
+// init registers the handler with the engine.
 func init() {
 	engine.RegisterHandler("OnRunEnvVars", &engine.RegisteredHandler{
-		NewInput: nil,
+		NewInput: func() any { return nil }, // No 'arguments' block.
+		NewDeps:  func() any { return new(Deps) },
 		Fn:       OnRunEnvVars,
 	})
 }

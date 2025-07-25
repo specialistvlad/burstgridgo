@@ -1,22 +1,26 @@
-## This example demonstrates how to use a single persistent Socket.IO connection
-## IT IS NOT IMPLEMENTED IN THE CODE YET
+# This example demonstrates how a stateful Socket.IO module could be built
+# using the new resource management system.
+# NOTE: The 'socketio_client' asset and 'socketio_request' runner are
+# hypothetical and have not been implemented yet.
 
 step "env_vars" "env" {}
 
-# 1. Establish one, persistent connection.
-step "socketio" "shared_client" {
+# 1. Define a stateful resource for the persistent Socket.IO connection.
+# The engine would call the 'create' handler for this asset once.
+resource "socketio_client" "shared_connection" {
   arguments {
     url                  = step.env_vars.env.output.all.SOCKETIO_WSS_URL
     insecure_skip_verify = true
-    # Note: This runner would need to be modified to output a client object.
   }
 }
 
 # 2. Use the shared client to send the first request.
+# The 'uses' block injects the live client object into the step's handler.
 step "socketio_request" "get_upload_info" {
+  uses {
+    client = resource.socketio_client.shared_connection
+  }
   arguments {
-    # This `client` argument does not yet exist on any runner.
-    client     = step.socketio.shared_client.output.client
     emit_event = "document.post.v2.request"
     on_event   = "document.post.v2.success"
     timeout    = "5s"
@@ -24,7 +28,7 @@ step "socketio_request" "get_upload_info" {
   }
 }
 
-# 3. Upload the file to S3.
+# 3. Upload the file to S3 using data from the previous step.
 step "s3" "upload" {
   arguments {
     action      = "upload"

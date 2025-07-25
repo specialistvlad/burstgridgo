@@ -5,6 +5,6 @@ step "env_vars" "read_env" {}
 # output of the "read_env" step above.
 step "print" "display" {
   arguments {
-    input = step.read_env.output.all
+    input = step.env_vars.read_env.output.all
   }
 }

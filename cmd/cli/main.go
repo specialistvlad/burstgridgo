@@ -12,6 +12,7 @@ import (
 	"github.com/vk/burstgridgo/internal/healthcheck"
 	_ "github.com/vk/burstgridgo/modules/env_vars"
 	_ "github.com/vk/burstgridgo/modules/help"
+	_ "github.com/vk/burstgridgo/modules/http_client"
 	_ "github.com/vk/burstgridgo/modules/http_request"
 	_ "github.com/vk/burstgridgo/modules/print"
 	_ "github.com/vk/burstgridgo/modules/s3"
@@ -48,10 +49,10 @@ func main() {
 	}
 	slog.SetDefault(slog.New(handler))
 
-	// Discover all available runner definitions from the modules directory.
-	slog.Info("Discovering available runners...")
-	if err := engine.DiscoverRunners("modules"); err != nil {
-		slog.Error("Failed to discover runners", "error", err)
+	// Discover all available module definitions from the modules directory.
+	slog.Info("Discovering available modules (runners & assets)...")
+	if err := engine.DiscoverModules("modules"); err != nil {
+		slog.Error("Failed to discover modules", "error", err)
 		os.Exit(1)
 	}
 
@@ -60,7 +61,8 @@ func main() {
 		go healthcheck.StartServer(cliOpts.HealthcheckPort)
 	}
 
-	var allSteps []*engine.Step
+	// This will hold the combined configuration from all parsed files.
+	gridConfig := &engine.GridConfig{}
 
 	// 3. If a grid path is provided, find and parse the HCL files.
 	if cliOpts.GridPath != "" {
@@ -76,25 +78,27 @@ func main() {
 				slog.Debug("Resolved HCL file", "path", file)
 			}
 
-			// Parse all files to get a flat list of steps.
+			// Parse all files and merge them into a single config.
 			for _, file := range hclFiles {
-				config, err := engine.DecodeGridFile(file)
+				cfg, err := engine.DecodeGridFile(file)
 				if err != nil {
 					slog.Warn("Failed to decode HCL file", "path", file, "error", err)
 					continue
 				}
-				allSteps = append(allSteps, config.Steps...)
+				// Append resources and steps from the parsed file.
+				gridConfig.Resources = append(gridConfig.Resources, cfg.Resources...)
+				gridConfig.Steps = append(gridConfig.Steps, cfg.Steps...)
 			}
 		}
 	}
 
 	// 4. If no steps were loaded, inject the help step.
-	if len(allSteps) == 0 {
+	if len(gridConfig.Steps) == 0 {
 		if cliOpts.GridPath != "" {
 			slog.Info("No steps found in path, displaying help.", "path", cliOpts.GridPath)
 		}
 		// Create a single step to run the help runner.
-		allSteps = []*engine.Step{
+		gridConfig.Steps = []*engine.Step{
 			{
 				Name:       "show_help",
 				RunnerType: "help",
@@ -106,13 +110,14 @@ func main() {
 	}
 
 	// 5. Build the dependency graph.
-	graph, err := dag.NewGraph(allSteps)
+	graph, err := dag.NewGraph(gridConfig)
 	if err != nil {
 		slog.Error("Failed to build dependency graph", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("Handlers registered:", "count", len(engine.HandlerRegistry), "keys", reflect.ValueOf(engine.HandlerRegistry).MapKeys())
+	slog.Info("Step handlers registered:", "count", len(engine.HandlerRegistry), "keys", reflect.ValueOf(engine.HandlerRegistry).MapKeys())
+	slog.Info("Asset handlers registered:", "count", len(engine.AssetHandlerRegistry), "keys", reflect.ValueOf(engine.AssetHandlerRegistry).MapKeys())
 
 	// 6. Create an executor and run the graph.
 	if len(graph.Nodes) > 0 {
