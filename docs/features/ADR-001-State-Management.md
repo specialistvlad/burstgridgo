@@ -40,80 +40,91 @@ Optional hooks provide guaranteed, isolated cleanup for the action itself:
 * **`on_end()`**: An optional method that runs immediately after `on_start` has been called, even if `on_run` fails. This is crucial for action-specific setup/teardown, like managing a temporary file or a distributed lock.
 
 ---
-## 3. The Provider Contract: Dependency Injection
+## 3. The Provider Contract: Dependency Injection via `uses` block
+To establish a safe and explicit link between a `step` and the `resource`(s) it needs, a `step` block will use a dedicated `uses {}` block. This block maps resource instances directly to the fields of a Go struct that is passed to the handler, providing compile-time type safety for the handler author.
 
-To establish a link between a `step` and the `resource` it needs, a `step` block will use a `uses` meta-argument. The value of this argument is an HCL expression that references a `resource` instance.
+#### HCL Contract
+A `runner`'s manifest will still declare the *types* of assets it is compatible with. The user's `step` block provides the concrete `resource` *instances* via the `uses {}` block.
 
-A `runner` manifest declares the *type* of `asset` it is compatible with. The user's `step` block provides the concrete `resource` *instance*.
+* **Runner Manifest (`modules/sql/manifest.hcl`)**
+    This file declares the `asset` types this runner can consume.
 
-HCL definition for a runner manifest (e.g., `modules/sql/manifest.hcl`), showing the 'uses "database" {}' block that declares its uses requirement.
+    ```hcl
+    runner "sql_query" {
+      description = "Executes a SQL query against a database resource."
+      
+      # This runner declares it needs a dependency that conforms 
+      # to the "database" asset type. The key "DB" is a suggestion
+      # for the field name in the Go Deps struct.
+      uses "DB" {
+        asset_type = "database"
+      }
 
-```hcl
-runner "sql_query" {
-  description = "Executes a SQL query."
-  # This runner declares it needs a uses that conforms to the "database" asset type.
-  uses "database" {}
-  
-  input "query" {
-    type        = string
-    description = "The SQL query to execute."
-  }
-}
-```
+      input "query" { 
+        type        = string
+        description = "The SQL query to execute."
+      }
+    }
+    ```
 
-User's HCL grid file (e.g., `my_test.hcl`), showing a 'resource' block being defined and a 'step' block using the 'uses' meta-argument to reference it.
-```hcl
-resource "database" "main_db" {
-  # Arguments for creating the database resource
-  connection_string = "postgres://user:pass@host:port/db"
-}
+* **User Grid File (`my_test.hcl`)**
+    The user maps a specific `resource` instance to the dependency key defined in the manifest.
 
-step "sql_query" "get_users" {
-  # The step explicitly declares its dependency on the 'main_db' resource.
-  # The engine uses this to build the DAG and inject the dependency.
-  uses = resource.database.main_db
+    ```hcl
+      resource "database" "main_db" {
+        connection_string = "postgres://user:pass@host:port/db"
+      }
 
-  arguments {
-    query = "SELECT * FROM users;"
-  }
-}
-```
+      step "sql_query" "get_users" {
+        # The step explicitly maps the 'main_db' resource to the 'DB' dependency.
+        # The engine uses this mapping to populate the Go handler's Deps struct.
+        uses {
+          DB = resource.database.main_db
+        }
 
-The Go handler for the `step`'s runner would then have a signature that accepts the uses object, ensuring type safety is enforced by the engine at runtime.
+        arguments {
+          query = "SELECT * FROM users;"
+        }
+      }
+    ```
 
-Go handler function signature for a step, showing the injected uses interface (e.g., `uses database.Connection`).
-```golang
-// In the database asset's Go package (e.g., assets/database/):
-func init() {
-	engine.RegisterAssetInterface("database", reflect.TypeOf((*Connection)(nil)).Elem())
-}
+#### Go Handler Contract
+The Go handler for the `step` receives its dependencies in a dedicated, type-safe `Deps` struct. The handler signature is standardized to `func(ctx context.Context, deps *Deps, input *Input) (any, error)`.
 
-// Connection defines the interface a database uses must satisfy.
-type Connection interface {
-    Exec(ctx context.Context, query string, args ...any) (any, error)
-    Close() error
-}
+* **Go Handler Implementation (`modules/sql/module.go`)**
 
-// In the sql_query runner's Go package (e.g., modules/sql/):
-// OnRunSqlQuery is the handler for the step.
-// The `uses` argument is typed to the specific interface it needs.
-func OnRunSqlQuery(ctx context.Context, uses database.Connection, input *Input) (any, error) {
-    // ... implementation ...
-}
-```
+    ```golang
+    package sql
 
-### The Concurrency Safety Contract
+    // --- In a shared package, e.g., assets/database ---
+    // The interface defining the contract for any "database" resource.
+    type Connection interface {
+        Exec(ctx context.Context, query string, args ...any) (any, error)
+        Close() error
+    }
 
-A critical aspect of the uses contract is **concurrency safety**. Because the executor runs steps in parallel, multiple goroutines may attempt to use the same shared `resource` instance simultaneously.
+    // --- In the sql_query runner's package ---
 
-Therefore, any Go object returned by a `resource`'s `Create()` handler **MUST be safe for concurrent use**.
+    // Deps defines the resources required by this handler.
+    // Field names must match the keys in the HCL `uses` block.
+    type Deps struct {
+        DB database.Connection
+    }
 
-The implementer of an `asset` is responsible for ensuring this thread safety. This typically involves:
-* Using mutexes (`sync.RWMutex`) to protect shared state within the object.
-* Returning a true connection pool object (like `*sql.DB`) which manages its own internal locking, rather than a single, unsafe connection.
-* Designing the object's methods to be re-entrant and free of side effects that could cause race conditions.
+    // Input defines the arguments for the 'arguments' block.
+    type Input struct {
+        Query string `hcl:"query"`
+    }
 
-Failing to adhere to this contract will lead to data races and unpredictable behavior at runtime. The engine assumes this contract is met and will not provide external locking for `resource` instances.
+    // OnRunSqlQuery is the handler for the step. Its signature is standardized.
+    // The 'deps' argument is a pointer to a populated, type-safe struct.
+    func OnRunSqlQuery(ctx context.Context, deps *Deps, input *Input) (any, error) {
+        // Implementation has full type safety.
+        result, err := deps.DB.Exec(ctx, input.Query)
+        // ...
+        return result, err
+    }
+    ```
 
 ---
 ## 4. Asset Type Registration & Validation
@@ -153,11 +164,11 @@ If this check fails, the grid run is terminated with a clear type-mismatch error
 
 The engine's execution process is updated to manage both `resource` and `step` nodes within a single, unified DAG.
 
-1.  **Unified DAG Construction:** The engine parses all HCL files and builds a single graph containing both `resource` and `step` nodes. A dependency edge is created from a `step` to a `resource` via the `uses` meta-argument, as well as from standard `step.A.output` interpolations.
+1.  **Unified DAG Construction:** The engine parses all HCL files and builds a single graph containing both `resource` and `step` nodes. A dependency edge is created from a `step` to a `resource` via the `uses` block, as well as from standard `step.A.output` interpolations.
 
 2.  **Stateful Node Execution:** The executor's worker pool can execute any node whose dependencies are met.
     * When a worker executes a **`resource` node**, it calls the resource's `Create()` method. To ensure this happens exactly once and is concurrency-safe, the executor will use a `sync.Once` primitive for each resource node's creation logic. The stateful object returned by `Create()` is stored in a thread-safe central container, keyed by the resource's unique ID (e.g., `resource.database.main_db`).
-    * When a worker executes a **`step` node**, the executor retrieves the required stateful uses object(s) from the central container and injects them as arguments into the `on_run` handler function.
+    * When a worker executes a **`step` node**, the executor retrieves the required stateful uses object(s) from the central container, populates a Deps struct and passes a pointer to that struct to the handler
 
 3.  **Resource Lifecycle Management & Cleanup:** The executor manages the resource lifecycle through a robust, two-part strategy to ensure both efficiency and reliability.
     * **Descendant Completion Counter (For Efficiency):** To enable efficient, runtime garbage collection, each `resource` node maintains an atomic counter.
