@@ -40,8 +40,6 @@ type Node struct {
 	State           atomic.Int32
 	Error           error
 	Output          any // For steps: cty.Value; for resources: live Go object
-	creationOnce    atomic.Pointer[atomic.Bool]
-	destructionOnce atomic.Pointer[atomic.Bool]
 }
 
 // Graph is the collection of all nodes.

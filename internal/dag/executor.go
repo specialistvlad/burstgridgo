@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 // Executor runs the tasks in a graph.
@@ -122,21 +123,40 @@ func (e *Executor) executeResourceNode(ctx context.Context, node *Node) error {
 	logger := slog.With("resource", node.ID)
 	logger.Info("▶️ Creating resource")
 
-	// Find asset definition and handler
-	assetDef, ok := engine.AssetDefinitionRegistry[node.ResourceConfig.AssetType]
+	assetType := node.ResourceConfig.AssetType
+
+	// 1. Check if the asset type itself is defined in a manifest.
+	assetDef, ok := engine.AssetDefinitionRegistry[assetType]
 	if !ok {
-		return fmt.Errorf("unknown asset type '%s'", node.ResourceConfig.AssetType)
+		return fmt.Errorf("unknown asset type '%s' referenced by resource '%s'", assetType, node.ID)
 	}
-	handlerName := assetDef.Lifecycle.Create
+
+	// 2. Check if the asset definition has a lifecycle block.
+	if assetDef.Lifecycle == nil {
+		return fmt.Errorf("asset type '%s' has no 'lifecycle' block defined in its manifest", assetType)
+	}
+
+	// 3. Check if the required 'create' and 'destroy' handlers are specified in the lifecycle.
+	createHandlerName := assetDef.Lifecycle.Create
 	destroyHandlerName := assetDef.Lifecycle.Destroy
-	assetHandler, ok := engine.AssetHandlerRegistry[handlerName]
-	if !ok {
-		return fmt.Errorf("handler '%s' for asset type '%s' not registered", handlerName, assetDef.Type)
+	if createHandlerName == "" {
+		return fmt.Errorf("asset type '%s' is missing 'create' handler name in its lifecycle", assetType)
+	}
+	if destroyHandlerName == "" {
+		return fmt.Errorf("asset type '%s' is missing 'destroy' handler name in its lifecycle", assetType)
+	}
+
+	// 4. Check if the Go functions for these handlers are actually registered.
+	assetHandler, ok := engine.AssetHandlerRegistry[createHandlerName]
+	if !ok || assetHandler.CreateFn == nil {
+		return fmt.Errorf("create handler '%s' for asset type '%s' is not registered or is nil", createHandlerName, assetType)
 	}
 	destroyFn, ok := engine.AssetHandlerRegistry[destroyHandlerName]
-	if !ok {
-		return fmt.Errorf("destroy handler '%s' not registered", destroyHandlerName)
+	if !ok || destroyFn.DestroyFn == nil {
+		return fmt.Errorf("destroy handler '%s' for asset type '%s' is not registered or is nil", destroyHandlerName, assetType)
 	}
+
+	// --- Validation Passed: Proceed with Execution ---
 
 	// Decode arguments
 	inputStruct := assetHandler.NewInput()
@@ -187,10 +207,14 @@ func (e *Executor) executeStepNode(ctx context.Context, node *Node) error {
 	inputStruct := registeredHandler.NewInput()
 	evalCtx := e.buildEvalContext(node)
 
-	// *** FIX: Only decode if the handler expects input AND the user provided an arguments block. ***
 	if inputStruct != nil && node.StepConfig.Arguments != nil {
 		if diags := gohcl.DecodeBody(node.StepConfig.Arguments.Body, evalCtx, inputStruct); diags.HasErrors() {
 			return diags
+		}
+		// ADD THE FOLLOWING BLOCK:
+		// After decoding user-provided args, apply defaults from the manifest for any missing fields.
+		if err := applyInputDefaults(inputStruct, runnerDef, node.StepConfig.Arguments.Body); err != nil {
+			return fmt.Errorf("error applying default values for step %s: %w", node.ID, err)
 		}
 	}
 
@@ -374,4 +398,51 @@ func traversableToID(v hcl.Traversal) (string, error) {
 		return "", fmt.Errorf("expected a 'resource' traversal, got '%s'", root)
 	}
 	return fmt.Sprintf("resource.%s.%s", v[1].(hcl.TraverseAttr).Name, v[2].(hcl.TraverseAttr).Name), nil
+}
+
+// applyInputDefaults uses reflection to apply default values from a runner's
+// manifest to an input struct for any fields the user did not provide.
+func applyInputDefaults(inputStruct any, runnerDef *engine.RunnerDefinition, userBody hcl.Body) error {
+	if inputStruct == nil || runnerDef == nil || userBody == nil {
+		return nil
+	}
+
+	// Get the set of attributes the user explicitly provided in their HCL.
+	userAttrs, _ := userBody.JustAttributes()
+	userProvidedNames := make(map[string]struct{})
+	for name := range userAttrs {
+		userProvidedNames[name] = struct{}{}
+	}
+
+	structVal := reflect.ValueOf(inputStruct).Elem()
+	structType := structVal.Type()
+
+	// Iterate over the inputs defined in the manifest.
+	for _, inputDef := range runnerDef.Inputs {
+		// If the user already provided this input, or if there's no default, skip.
+		if _, ok := userProvidedNames[inputDef.Name]; ok || inputDef.Default == nil {
+			continue
+		}
+
+		// Find the corresponding field in the Go struct by its HCL tag name.
+		for i := 0; i < structType.NumField(); i++ {
+			field := structType.Field(i)
+			tag := field.Tag.Get("hcl")
+			tagName := strings.Split(tag, ",")[0]
+
+			if tagName == inputDef.Name {
+				// We found the matching field. Apply the default value.
+				fieldVal := structVal.Field(i)
+				if fieldVal.CanSet() {
+					// Use gocty to convert the default cty.Value to the field's native Go type.
+					if err := gocty.FromCtyValue(*inputDef.Default, fieldVal.Addr().Interface()); err != nil {
+						return fmt.Errorf("failed to apply default for input '%s': %w", inputDef.Name, err)
+					}
+				}
+				break // Move to the next input definition.
+			}
+		}
+	}
+
+	return nil
 }
