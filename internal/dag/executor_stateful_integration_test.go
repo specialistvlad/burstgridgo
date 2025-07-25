@@ -39,8 +39,6 @@ func TestExecutor_Integration_StatefulResourceLifecycle(t *testing.T) {
 	var createCallCount, destroyCallCount atomic.Int32
 	var receivedInstances []*mockCounter
 	var instanceMutex sync.Mutex
-	var capturedPrintInput map[string]string
-	var printMutex sync.Mutex
 
 	// 2. Mock "Create" handler for the 'local_counter' asset.
 	mockCreateCounter := func(ctx context.Context, input *emptyAssetInput) (*mockCounter, error) {
@@ -87,30 +85,12 @@ func TestExecutor_Integration_StatefulResourceLifecycle(t *testing.T) {
 		}
 	}
 
-	// 5. Mock 'print' step handler to act as a spy.
-	type mockPrintInput struct {
-		Value map[string]string `hcl:"input"`
-	}
-	type mockPrintDeps struct{}
-	mockOnRunPrint := func(ctx context.Context, deps *mockPrintDeps, input *mockPrintInput) (cty.Value, error) {
-		t.Logf("[PRINT SPY] Capturing input: %v", input.Value)
-		printMutex.Lock()
-		capturedPrintInput = input.Value
-		printMutex.Unlock()
-		return cty.NilVal, nil
-	}
-
-	// 6. Create the override maps for all mock handlers.
+	// 5. Create the override maps for all mock handlers.
 	stepHandlerOverrides := map[string]*engine.RegisteredHandler{
 		"OnRunCounterOp": {
 			NewInput: func() any { return new(counterOpInput) },
 			NewDeps:  func() any { return new(counterOpDeps) },
 			Fn:       mockOnRunCounterOp,
-		},
-		"OnRunPrint": {
-			NewInput: func() any { return new(mockPrintInput) },
-			NewDeps:  func() any { return new(mockPrintDeps) },
-			Fn:       mockOnRunPrint,
 		},
 	}
 	assetHandlerOverrides := map[string]*engine.RegisteredAssetHandler{
@@ -123,7 +103,7 @@ func TestExecutor_Integration_StatefulResourceLifecycle(t *testing.T) {
 		},
 	}
 
-	// 7. Parse the test grid file.
+	// 6. Parse the test grid file.
 	gridPath, err := filepath.Abs("../../examples/local_resource_test.hcl")
 	require.NoError(t, err)
 	hclFiles, err := engine.ResolveGridPath(gridPath)
@@ -133,7 +113,7 @@ func TestExecutor_Integration_StatefulResourceLifecycle(t *testing.T) {
 	gridConfig, err := engine.DecodeGridFile(hclFiles[0])
 	require.NoError(t, err)
 
-	// 8. Build the dependency graph.
+	// 7. Build the dependency graph.
 	graph, err := NewGraph(gridConfig)
 	require.NoError(t, err)
 
@@ -172,10 +152,4 @@ func TestExecutor_Integration_StatefulResourceLifecycle(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(2), finalOutput.Value, "The counter's state should persist and be 2 after two increments.")
-
-	// 4. Final Output Verification: Verify the print spy received the correct final value.
-	printMutex.Lock()
-	defer printMutex.Unlock()
-	expectedPrint := map[string]string{"final_counter_value": "2"}
-	assert.Equal(t, expectedPrint, capturedPrintInput, "The print spy should have captured the correct final value from the counter.")
 }

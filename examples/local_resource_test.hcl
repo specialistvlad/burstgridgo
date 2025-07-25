@@ -44,6 +44,7 @@ step "counter_op" "increment_second" {
 
 # 4. Final step: Get the final value from the counter.
 # Its 'get' action would read the current value without changing it.
+# The output of this step is what the test will assert against.
 step "counter_op" "get_final_value" {
   uses {
     counter = resource.local_counter.shared_tally
@@ -54,16 +55,4 @@ step "counter_op" "get_final_value" {
   depends_on = [
     "counter_op.increment_second"
   ]
-}
-
-# 5. Print the result from the final step.
-# This demonstrates reading the output from a step that interacted with a resource.
-# The `tostring` function is used to ensure the output is a string,
-# which is what the `print` runner expects.
-step "print" "show_result" {
-  arguments {
-    input = {
-      "final_counter_value" = tostring(step.counter_op.get_final_value.output.value)
-    }
-  }
 }

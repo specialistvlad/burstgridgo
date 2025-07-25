@@ -74,10 +74,15 @@ func (e *Executor) executeResourceNode(ctx context.Context, node *Node) error {
 	// Store instance and register destroy function for guaranteed cleanup.
 	node.Output = resourceObj
 	e.resourceInstances.Store(node.ID, resourceObj)
-	e.pushCleanup(func() {
-		logger.Info("🔥 Destroying resource via deferred cleanup")
+
+	// Create the cleanup function closure.
+	cleanupFunc := func() {
+		logger.Info("🔥 Destroying resource")
 		reflect.ValueOf(destroyFn.DestroyFn).Call([]reflect.Value{reflect.ValueOf(resourceObj)})
-	})
+		e.resourceInstances.Delete(node.ID)
+	}
+	// Pass the node and the function to the cleanup stack.
+	e.pushCleanup(node, cleanupFunc)
 
 	logger.Info("✅ Resource created")
 	return nil

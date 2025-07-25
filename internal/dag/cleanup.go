@@ -7,11 +7,14 @@ import (
 	"github.com/vk/burstgridgo/internal/engine"
 )
 
-// pushCleanup adds a function to the LIFO cleanup stack.
-func (e *Executor) pushCleanup(f func()) {
+// pushCleanup adds a function to the LIFO cleanup stack, guarded by the node's sync.Once.
+func (e *Executor) pushCleanup(node *Node, f func()) {
 	e.cleanupMutex.Lock()
 	defer e.cleanupMutex.Unlock()
-	e.cleanupStack = append(e.cleanupStack, f)
+	// The function we store on the stack now calls the real logic via sync.Once
+	e.cleanupStack = append(e.cleanupStack, func() {
+		node.destroyOnce.Do(f)
+	})
 }
 
 // executeCleanupStack runs all registered cleanup functions in LIFO order.
@@ -35,8 +38,6 @@ func (e *Executor) destroyResource(node *Node) {
 	}
 
 	logger := slog.With("resource", node.ID)
-	logger.Info("🔥 Destroying resource efficiently")
-
 	assetDef := engine.AssetDefinitionRegistry[node.ResourceConfig.AssetType]
 	if assetDef == nil || assetDef.Lifecycle == nil {
 		logger.Warn("Cannot destroy resource efficiently: asset definition or lifecycle not found.")
@@ -54,6 +55,13 @@ func (e *Executor) destroyResource(node *Node) {
 		return
 	}
 
-	reflect.ValueOf(destroyHandler.DestroyFn).Call([]reflect.Value{reflect.ValueOf(instance)})
-	e.resourceInstances.Delete(node.ID)
+	// Create a closure containing the actual destruction logic.
+	cleanupFunc := func() {
+		logger.Info("🔥 Destroying resource")
+		reflect.ValueOf(destroyHandler.DestroyFn).Call([]reflect.Value{reflect.ValueOf(instance)})
+		e.resourceInstances.Delete(node.ID)
+	}
+
+	// Use sync.Once to ensure this logic runs at most once.
+	node.destroyOnce.Do(cleanupFunc)
 }
