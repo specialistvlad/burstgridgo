@@ -62,7 +62,7 @@ func TestExecutor_Integration_StatefulResourceLifecycle(t *testing.T) {
 		Action string `hcl:"action"`
 	}
 	type counterOpDeps struct {
-		Counter *mockCounter `hcl:"counter"` // This tag fixes the injection.
+		Counter *mockCounter `hcl:"counter"` // This tag makes the injection explicit and robust.
 	}
 	mockOnRunCounterOp := func(ctx context.Context, deps *counterOpDeps, input *counterOpInput) (cty.Value, error) {
 		t.Logf("[STEP SPY] Running counter_op with action '%s'", input.Action)

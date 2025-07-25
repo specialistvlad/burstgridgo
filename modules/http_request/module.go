@@ -18,9 +18,9 @@ type Input struct {
 }
 
 // Deps defines the injected resources from the 'uses' HCL block.
-// The field name 'Client' must match the key in the 'uses' block of the manifest.
+// The `hcl` tag on the 'Client' field must match the key in the 'uses' block of the manifest.
 type Deps struct {
-	Client *http.Client
+	Client *http.Client `hcl:"client"`
 }
 
 // OnRunHttpRequest is the handler for the 'http_request' runner's on_run event.

@@ -3,7 +3,6 @@ package dag
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/engine"
@@ -13,7 +12,7 @@ import (
 // resource instances to the fields of the struct based on the 'uses' block.
 func (e *Executor) buildDepsStruct(node *Node, runnerDef *engine.RunnerDefinition, handler *engine.RegisteredHandler, evalCtx *hcl.EvalContext) (any, error) {
 	depsStruct := handler.NewDeps()
-	if node.StepConfig.Uses == nil {
+	if node.StepConfig.Uses == nil || node.StepConfig.Uses.Body == nil {
 		return depsStruct, nil // No `uses` block, return empty deps struct.
 	}
 
@@ -31,12 +30,11 @@ func (e *Executor) buildDepsStruct(node *Node, runnerDef *engine.RunnerDefinitio
 	depsValue := reflect.ValueOf(depsStruct).Elem()
 	for i := 0; i < depsValue.NumField(); i++ {
 		field := depsValue.Type().Field(i)
+		lookupKey := field.Tag.Get("hcl")
 
-		// Use the HCL tag for the lookup key if it exists, otherwise the field name.
-		hclTag := strings.Split(field.Tag.Get("hcl"), ",")[0]
-		lookupKey := hclTag
-		if lookupKey == "" {
-			lookupKey = field.Name
+		// A field must have an `hcl` tag to be considered for injection.
+		if lookupKey == "" || lookupKey == "-" {
+			continue
 		}
 
 		// Find which resource this field maps to from the `uses` block
