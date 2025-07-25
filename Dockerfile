@@ -36,9 +36,12 @@ RUN go mod download
 COPY ./cmd/ ./cmd/
 COPY ./internal/ ./internal/
 COPY ./modules/ ./modules/
+COPY ./examples/ ./examples/
 
-# Run tests as a separate step. The build will fail if any tests fail.
-RUN go test ./...
+# Run all checks: fmt, vet, lint, test
+RUN go fmt ./... && \
+    go vet ./... && \
+    go test -v ./...
 
 # Build a true cross-platform binary using GOOS and GOARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \

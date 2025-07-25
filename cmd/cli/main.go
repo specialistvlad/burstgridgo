@@ -122,7 +122,7 @@ func main() {
 	// 6. Create an executor and run the graph.
 	if len(graph.Nodes) > 0 {
 		slog.Info("🚀 Starting concurrent execution...")
-		executor := dag.NewExecutor(graph)
+		executor := dag.NewExecutor(graph, nil)
 		if err := executor.Run(); err != nil {
 			slog.Error("Execution failed", "error", err)
 			os.Exit(1)

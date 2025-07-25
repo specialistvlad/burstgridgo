@@ -1,5 +1,5 @@
 # ADR-002: Integration Testing - Step 1 (Stateless Workflows)
-- **Status**: Proposal
+- **Status**: Implemented
 - **Author**: Vladyslav Kazantsev
 - **Date**: 2025-07-24
 

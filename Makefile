@@ -12,7 +12,7 @@ grid ?=
 .DEFAULT_GOAL := help
 
 # Add this with your other phony targets
-.PHONY: help build build-dev prod dev test
+.PHONY: help build build-dev prod dev test lint vet fmt check
 
 ARCH := $(shell uname -m)
 ifeq ($(ARCH),x86_64)
@@ -63,7 +63,21 @@ dev: ## Run dev container with live-reloading.|   Options:|     grid=<path>   (R
 		$(grid)
 
 
-# Add this target, for example after the 'help' target
-test: ## Run all tests with race detection.
+fmt: ## Format code with go fmt
+	@echo "Formatting code..."
+	go fmt ./...
+
+vet: ## Run go vet
+	@echo "Running go vet..."
+	go vet ./...
+
+lint: ## Run optional golangci-lint
+	@echo "Running golangci-lint..."
+	golangci-lint run ./...
+
+test: ## Run unit tests
 	@echo "Running tests..."
 	go test -v -race ./...
+
+check: fmt vet test ## Run all local validations (CI-safe)
+	@echo "Running full check (fmt + vet + test)..."

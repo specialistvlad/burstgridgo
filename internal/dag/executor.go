@@ -22,11 +22,15 @@ type Executor struct {
 	resourceInstances sync.Map // Stores live resource objects, keyed by node.ID
 	cleanupStack      []func() // LIFO stack of destroy functions
 	cleanupMutex      sync.Mutex
+	handlerOverrides  map[string]*engine.RegisteredHandler
 }
 
 // NewExecutor creates a new graph executor.
-func NewExecutor(graph *Graph) *Executor {
-	return &Executor{Graph: graph}
+func NewExecutor(graph *Graph, overrides map[string]*engine.RegisteredHandler) *Executor {
+	return &Executor{
+		Graph:            graph,
+		handlerOverrides: overrides,
+	}
 }
 
 // Run executes the entire graph concurrently and returns an error if any node fails.
@@ -198,9 +202,12 @@ func (e *Executor) executeStepNode(ctx context.Context, node *Node) error {
 		return fmt.Errorf("unknown runner type '%s'", node.StepConfig.RunnerType)
 	}
 	handlerName := runnerDef.Lifecycle.OnRun
-	registeredHandler, ok := engine.HandlerRegistry[handlerName]
+	registeredHandler, ok := e.handlerOverrides[handlerName] // Check overrides first
 	if !ok {
-		return fmt.Errorf("handler '%s' for runner '%s' not registered", handlerName, runnerDef.Type)
+		registeredHandler, ok = engine.HandlerRegistry[handlerName] // Fallback to global registry
+	}
+	if !ok {
+		return fmt.Errorf("handler '%s' for runner '%s' not registered or provided as override", handlerName, runnerDef.Type)
 	}
 
 	// Decode 'arguments' block
