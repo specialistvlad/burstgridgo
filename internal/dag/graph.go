@@ -2,6 +2,7 @@ package dag
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	"github.com/hashicorp/hcl/v2"
@@ -37,6 +38,7 @@ type Node struct {
 	Dependents      map[string]*Node
 	depCount        atomic.Int32
 	descendantCount atomic.Int32 // For resources: counts steps that depend on it.
+	destroyOnce     sync.Once    // Ensures destroy logic runs only once.
 	State           atomic.Int32
 	Error           error
 	Output          any // For steps: cty.Value; for resources: live Go object

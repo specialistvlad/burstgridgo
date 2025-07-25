@@ -3,6 +3,7 @@ package dag
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -39,8 +40,10 @@ func (e *Executor) Run() error {
 	defer cancel()
 
 	// Initial population of the ready channel with nodes that have no dependencies.
+	slog.Debug("Initializing executor, finding root nodes...")
 	for _, node := range e.Graph.Nodes {
 		if node.depCount.Load() == 0 {
+			slog.Debug("Found root node", "nodeID", node.ID)
 			readyChan <- node
 		}
 	}
@@ -49,18 +52,22 @@ func (e *Executor) Run() error {
 
 	// Start a pool of workers to process nodes from the ready channel.
 	const numWorkers = 10
+	slog.Debug("Starting worker pool", "workers", numWorkers)
 	for i := 0; i < numWorkers; i++ {
-		go e.worker(ctx, readyChan, cancel)
+		go e.worker(ctx, readyChan, cancel, i)
 	}
 
 	// Wait for all nodes to be processed.
+	slog.Info("Waiting for all nodes to complete...")
 	e.wg.Wait()
+	slog.Info("All nodes completed.")
 	close(readyChan)
 
 	// Check for any failed nodes and report them.
 	var failedNodes []string
 	for _, node := range e.Graph.Nodes {
 		if node.State.Load() == int32(Failed) {
+			slog.Error("Node failed execution", "nodeID", node.ID, "error", node.Error)
 			failedNodes = append(failedNodes, node.ID)
 		}
 	}
@@ -71,15 +78,20 @@ func (e *Executor) Run() error {
 }
 
 // worker is the core processing loop for a single concurrent worker.
-func (e *Executor) worker(ctx context.Context, readyChan chan *Node, cancel context.CancelFunc) {
+func (e *Executor) worker(ctx context.Context, readyChan chan *Node, cancel context.CancelFunc, workerID int) {
+	slog.Debug("Worker started", "workerID", workerID)
 	for node := range readyChan {
+		logger := slog.With("workerID", workerID, "nodeID", node.ID, "nodeType", node.Type)
+
 		// If the context was canceled, mark the node as failed and exit.
 		if ctx.Err() != nil {
+			logger.Warn("Context canceled, skipping node execution.")
 			node.State.Store(int32(Failed))
 			e.wg.Done()
 			continue
 		}
 
+		logger.Debug("Worker picked up node for execution")
 		// Execute the node based on its type.
 		var err error
 		switch node.Type {
@@ -91,6 +103,7 @@ func (e *Executor) worker(ctx context.Context, readyChan chan *Node, cancel cont
 
 		// If execution failed, mark it, record the error, and cancel all other workers.
 		if err != nil {
+			logger.Error("Node execution failed", "error", err)
 			node.State.Store(int32(Failed))
 			node.Error = err
 			cancel() // Fail-fast
@@ -99,12 +112,14 @@ func (e *Executor) worker(ctx context.Context, readyChan chan *Node, cancel cont
 		}
 
 		// If execution succeeded, mark it as Done.
+		logger.Debug("Node execution succeeded")
 		node.State.Store(int32(Done))
 
 		// Decrement the dependency counter for all dependent nodes. If a dependent's
 		// counter reaches zero, it is now ready to run.
 		for _, dependent := range node.Dependents {
 			if dependent.depCount.Add(-1) == 0 {
+				logger.Debug("Unlocking dependent node", "dependentID", dependent.ID)
 				readyChan <- dependent
 			}
 		}
@@ -115,6 +130,7 @@ func (e *Executor) worker(ctx context.Context, readyChan chan *Node, cancel cont
 			for _, dep := range node.Deps {
 				if dep.Type == ResourceNode {
 					if dep.descendantCount.Add(-1) == 0 {
+						logger.Debug("Scheduling efficient destruction for resource", "resourceID", dep.ID)
 						go e.destroyResource(dep)
 					}
 				}
@@ -123,4 +139,5 @@ func (e *Executor) worker(ctx context.Context, readyChan chan *Node, cancel cont
 
 		e.wg.Done()
 	}
+	slog.Debug("Worker finished", "workerID", workerID)
 }

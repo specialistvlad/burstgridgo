@@ -1,5 +1,5 @@
 # ADR-005: Core Engine Internal Refactoring
-- **Status**: Proposed
+- **Status**: Implemented
 - **Author**: Senior Software Engineer
 - **Date**: 2025-07-24
 
