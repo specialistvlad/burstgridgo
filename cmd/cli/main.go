@@ -18,6 +18,8 @@ import (
 	_ "github.com/vk/burstgridgo/modules/print"
 	_ "github.com/vk/burstgridgo/modules/s3"
 	_ "github.com/vk/burstgridgo/modules/socketio"
+	_ "github.com/vk/burstgridgo/modules/socketio_client"
+	_ "github.com/vk/burstgridgo/modules/socketio_request"
 )
 
 func main() {

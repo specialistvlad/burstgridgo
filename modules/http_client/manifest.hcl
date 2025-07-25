@@ -5,7 +5,7 @@ asset "http_client" {
     type        = string
     description = "Request timeout duration (e.g., '30s')."
     optional    = true
-    default     = "30s"
+    default     = "5s"
   }
 
   lifecycle {
