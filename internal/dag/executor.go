@@ -17,19 +17,21 @@ import (
 
 // Executor runs the tasks in a graph.
 type Executor struct {
-	Graph             *Graph
-	wg                sync.WaitGroup
-	resourceInstances sync.Map // Stores live resource objects, keyed by node.ID
-	cleanupStack      []func() // LIFO stack of destroy functions
-	cleanupMutex      sync.Mutex
-	handlerOverrides  map[string]*engine.RegisteredHandler
+	Graph                 *Graph
+	wg                    sync.WaitGroup
+	resourceInstances     sync.Map // Stores live resource objects, keyed by node.ID
+	cleanupStack          []func() // LIFO stack of destroy functions
+	cleanupMutex          sync.Mutex
+	handlerOverrides      map[string]*engine.RegisteredHandler
+	assetHandlerOverrides map[string]*engine.RegisteredAssetHandler
 }
 
 // NewExecutor creates a new graph executor.
-func NewExecutor(graph *Graph, overrides map[string]*engine.RegisteredHandler) *Executor {
+func NewExecutor(graph *Graph, handlerOverrides map[string]*engine.RegisteredHandler, assetHandlerOverrides map[string]*engine.RegisteredAssetHandler) *Executor {
 	return &Executor{
-		Graph:            graph,
-		handlerOverrides: overrides,
+		Graph:                 graph,
+		handlerOverrides:      handlerOverrides,
+		assetHandlerOverrides: assetHandlerOverrides,
 	}
 }
 
@@ -150,24 +152,32 @@ func (e *Executor) executeResourceNode(ctx context.Context, node *Node) error {
 		return fmt.Errorf("asset type '%s' is missing 'destroy' handler name in its lifecycle", assetType)
 	}
 
-	// 4. Check if the Go functions for these handlers are actually registered.
-	assetHandler, ok := engine.AssetHandlerRegistry[createHandlerName]
+	// 4. Find the Go functions for these handlers, checking overrides first.
+	assetHandler, ok := e.assetHandlerOverrides[createHandlerName]
+	if !ok {
+		assetHandler, ok = engine.AssetHandlerRegistry[createHandlerName]
+	}
 	if !ok || assetHandler.CreateFn == nil {
 		return fmt.Errorf("create handler '%s' for asset type '%s' is not registered or is nil", createHandlerName, assetType)
 	}
-	destroyFn, ok := engine.AssetHandlerRegistry[destroyHandlerName]
+
+	destroyFn, ok := e.assetHandlerOverrides[destroyHandlerName]
+	if !ok {
+		destroyFn, ok = engine.AssetHandlerRegistry[destroyHandlerName]
+	}
 	if !ok || destroyFn.DestroyFn == nil {
 		return fmt.Errorf("destroy handler '%s' for asset type '%s' is not registered or is nil", destroyHandlerName, assetType)
 	}
 
 	// --- Validation Passed: Proceed with Execution ---
 
-	// Decode arguments
+	// Decode arguments, if the block exists.
 	inputStruct := assetHandler.NewInput()
 	evalCtx := e.buildEvalContext(node)
-	// Resources are required to have an arguments block and handler.
-	if diags := gohcl.DecodeBody(node.ResourceConfig.Arguments.Body, evalCtx, inputStruct); diags.HasErrors() {
-		return diags
+	if node.ResourceConfig.Arguments != nil {
+		if diags := gohcl.DecodeBody(node.ResourceConfig.Arguments.Body, evalCtx, inputStruct); diags.HasErrors() {
+			return diags
+		}
 	}
 
 	// Call Create handler
@@ -218,7 +228,6 @@ func (e *Executor) executeStepNode(ctx context.Context, node *Node) error {
 		if diags := gohcl.DecodeBody(node.StepConfig.Arguments.Body, evalCtx, inputStruct); diags.HasErrors() {
 			return diags
 		}
-		// ADD THE FOLLOWING BLOCK:
 		// After decoding user-provided args, apply defaults from the manifest for any missing fields.
 		if err := applyInputDefaults(inputStruct, runnerDef, node.StepConfig.Arguments.Body); err != nil {
 			return fmt.Errorf("error applying default values for step %s: %w", node.ID, err)
@@ -389,9 +398,27 @@ func (e *Executor) destroyResource(node *Node) {
 	if !found {
 		return // Already destroyed or never created.
 	}
-	slog.Info("🔥 Destroying resource efficiently", "resource", node.ID)
+
+	logger := slog.With("resource", node.ID)
+	logger.Info("🔥 Destroying resource efficiently")
+
 	assetDef := engine.AssetDefinitionRegistry[node.ResourceConfig.AssetType]
-	destroyHandler, _ := engine.AssetHandlerRegistry[assetDef.Lifecycle.Destroy]
+	if assetDef == nil || assetDef.Lifecycle == nil {
+		logger.Warn("Cannot destroy resource efficiently: asset definition or lifecycle not found.")
+		return
+	}
+
+	destroyHandlerName := assetDef.Lifecycle.Destroy
+	destroyHandler, ok := e.assetHandlerOverrides[destroyHandlerName]
+	if !ok {
+		destroyHandler, ok = engine.AssetHandlerRegistry[destroyHandlerName]
+	}
+
+	if !ok || destroyHandler.DestroyFn == nil {
+		logger.Warn("Cannot destroy resource efficiently: destroy handler not found or is nil.", "handler", destroyHandlerName)
+		return
+	}
+
 	reflect.ValueOf(destroyHandler.DestroyFn).Call([]reflect.Value{reflect.ValueOf(instance)})
 	e.resourceInstances.Delete(node.ID)
 }

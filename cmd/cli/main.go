@@ -10,10 +10,12 @@ import (
 	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/engine"
 	"github.com/vk/burstgridgo/internal/healthcheck"
+	_ "github.com/vk/burstgridgo/modules/counter_op"
 	_ "github.com/vk/burstgridgo/modules/env_vars"
 	_ "github.com/vk/burstgridgo/modules/help"
 	_ "github.com/vk/burstgridgo/modules/http_client"
 	_ "github.com/vk/burstgridgo/modules/http_request"
+	_ "github.com/vk/burstgridgo/modules/local_counter"
 	_ "github.com/vk/burstgridgo/modules/print"
 	_ "github.com/vk/burstgridgo/modules/s3"
 	_ "github.com/vk/burstgridgo/modules/socketio"
@@ -122,7 +124,7 @@ func main() {
 	// 6. Create an executor and run the graph.
 	if len(graph.Nodes) > 0 {
 		slog.Info("🚀 Starting concurrent execution...")
-		executor := dag.NewExecutor(graph, nil)
+		executor := dag.NewExecutor(graph, nil, nil)
 		if err := executor.Run(); err != nil {
 			slog.Error("Execution failed", "error", err)
 			os.Exit(1)
