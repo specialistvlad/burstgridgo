@@ -1,5 +1,5 @@
 # ADR-001: Stateful Resource Management
-- **Status**: Draft
+- **Status**: Implemented
 - **Author**: Vladyslav Kazantsev
 - **Date**: 2025-07-24
 
