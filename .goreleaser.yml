@@ -1,8 +1,9 @@
 # .goreleaser.yml
-# Corrected for the v2 schema.
+# Corrected for v2 schema and multi-arch manifest builds.
 version: 2
 
-# The 'builds' block is a top-level key.
+project_name: burstgridgo
+
 builds:
   - id: "burstgridgo"
     main: ./cmd/cli/
@@ -11,25 +12,39 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      - windows
-      - darwin
     goarch:
       - amd64
       - arm64
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.buildDate={{.Date}}
 
-# 'dockers' is also a top-level key.
+# Step 1: Build and push platform-specific Docker images.
+# Notice the image_templates now include the architecture.
 dockers:
   - use: buildx
     goos: linux
     goarch: amd64
     image_templates:
-      - "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}"
-      - "ghcr.io/specialistvlad/burstgridgo:latest"
+      - "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}-amd64"
     dockerfile: Dockerfile
     build_flag_templates:
-      - "--platform=linux/amd64,linux/arm64"
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=A declarative, concurrency-first load testing tool."
+      - "--label=org.opencontainers.image.url=https://github.com/specialistvlad/burstgridgo"
+      - "--label=org.opencontainers.image.source=https://github.com/specialistvlad/burstgridgo"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+  - use: buildx
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}-arm64"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
       - "--label=org.opencontainers.image.description=A declarative, concurrency-first load testing tool."
       - "--label=org.opencontainers.image.url=https://github.com/specialistvlad/burstgridgo"
@@ -39,20 +54,28 @@ dockers:
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.licenses=MIT"
 
-# The 'release' block remains a top-level key.
+# Step 2: Create and push a multi-arch manifest that points to the images above.
+docker_manifests:
+  - name_template: "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}-amd64"
+      - "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/specialistvlad/burstgridgo:latest"
+    image_templates:
+      - "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}-amd64"
+      - "ghcr.io/specialistvlad/burstgridgo:{{ .Tag }}-arm64"
+
 release:
   name_template: "Release {{.Version}}"
   prerelease: auto
 
-# The 'checksum' block remains a top-level key.
 checksum:
   name_template: "checksums.txt"
 
-# The 'snapshot' block remains a top-level key.
 snapshot:
-  name_template: "{{ incpatch .Version }}-next-{{ .ShortCommit }}"
+  # Renamed to version_template to fix the deprecation warning.
+  version_template: "{{ incpatch .Version }}-next-{{ .ShortCommit }}"
 
-# The 'changelog' block remains a top-level key.
 changelog:
   sort: asc
   filters:
