@@ -31,9 +31,6 @@ jobs:
         uses: goreleaser/goreleaser-action@v3
         with:
           version: latest
-          # The --snapshot flag tells GoReleaser to build from the current commit
-          # without requiring a Git tag. It will use the 'snapshot' configuration
-          # from your .goreleaser.yml file.
-          args: release --snapshot --rm-dist
+          args: release --snapshot --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
