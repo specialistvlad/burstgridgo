@@ -1,0 +1,24 @@
+# Git and repository files
+.git
+.gitignore
+.gitattributes
+
+# Documentation and legal
+*.md
+LICENSE
+
+# Local development and editor configuration
+.vscode/
+.idea/
+*.env
+local.*
+*.swp
+.DS_Store
+
+# Go build cache and modules
+/vendor/
+/pkg/mod/
+.cache/go-build/
+
+# Test files and build artifacts
+/out/

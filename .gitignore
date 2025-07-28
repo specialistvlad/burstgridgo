@@ -1,0 +1,27 @@
+# Compiled Go binaries
+burstgridgo
+*.test
+
+# Build and run artifacts
+.tmp/
+/out/
+/vendor/
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# Local environment files
+*.env
+local.*
+
+# Editor and IDE configuration
+.vscode/
+.idea/
+*.swp
+
+# OS-generated files
+.DS_Store
+
+# Go build cache
+.cache/go-build/

@@ -1,0 +1,18 @@
+# .air.toml
+root = "."
+tmp_dir = ".tmp"
+
+[build]
+# Command to build your application
+cmd = "go build -o .tmp/main ./cmd/cli"
+
+# The compiled binary to run
+bin = "./.tmp/main"
+
+# Directories to ignore
+exclude_dir = [".tmp", "vendor"]
+
+# Trigger a build on any file change
+include_ext = ["go", "hcl"]
+
+log = "build-errors.log"
