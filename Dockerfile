@@ -54,6 +54,34 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -o /out/burstgridgo ./cmd/cli
 
 # =================================================================
+# Development Stage
+# =================================================================
+# This stage is intentionally locked to the build host's architecture ($BUILDPLATFORM)
+# for performance, as emulating other platforms for development is often too slow.
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS dev
+
+ARG UID=10002
+RUN adduser -D -u ${UID} devuser
+
+USER devuser
+WORKDIR /app
+
+ENV BGGO_APP_PORT=8080
+EXPOSE 8080
+
+# This stage pre-installs dependencies and tools. The source code is NOT
+# copied into the image; it should be mounted as a volume during runtime.
+# This is the standard pattern for enabling live-reloading.
+COPY --chown=devuser:devuser go.mod go.sum ./
+
+RUN go mod download && \
+    go install github.com/air-verse/air@latest
+
+COPY --chown=devuser:devuser .air.toml ./
+
+ENTRYPOINT ["air"]
+
+# =================================================================
 # Production Stage
 # =================================================================
 ARG VERSION
@@ -83,31 +111,3 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
 
 ENTRYPOINT ["/burstgridgo"]
 CMD ["--healthcheck-port 8080", "/grid/main.hcl"]
-
-# =================================================================
-# Development Stage
-# =================================================================
-# This stage is intentionally locked to the build host's architecture ($BUILDPLATFORM)
-# for performance, as emulating other platforms for development is often too slow.
-FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS dev
-
-ARG UID=10002
-RUN adduser -D -u ${UID} devuser
-
-USER devuser
-WORKDIR /app
-
-ENV BGGO_APP_PORT=8080
-EXPOSE 8080
-
-# This stage pre-installs dependencies and tools. The source code is NOT
-# copied into the image; it should be mounted as a volume during runtime.
-# This is the standard pattern for enabling live-reloading.
-COPY --chown=devuser:devuser go.mod go.sum ./
-
-RUN go mod download && \
-    go install github.com/air-verse/air@latest
-
-COPY --chown=devuser:devuser .air.toml ./
-
-ENTRYPOINT ["air"]
