@@ -27,7 +27,7 @@ func run(ctx context.Context, args []string, outW io.Writer) error {
 	}
 
 	// The main application call uses the default core modules.
-	a := app.New(outW, appConfig)
+	a := app.NewApp(outW, appConfig)
 
 	if err := a.Run(ctx, appConfig); err != nil {
 		// Wrap application errors in a standard ExitError.

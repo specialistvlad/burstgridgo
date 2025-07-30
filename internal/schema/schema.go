@@ -64,7 +64,6 @@ type InputDefinition struct {
 	Name        string         `hcl:"name,label"`
 	Type        hcl.Expression `hcl:"type"`
 	Description string         `hcl:"description,optional"`
-	Optional    bool           `hcl:"optional,optional"`
 	Default     *cty.Value     `hcl:"default,optional"`
 }
 

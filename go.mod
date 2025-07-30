@@ -3,6 +3,7 @@ module github.com/vk/burstgridgo
 go 1.24.5
 
 require (
+	github.com/google/go-cmp v0.6.0
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/zclconf/go-cty v1.16.3
 	github.com/zishang520/engine.io-client-go v1.1.0
@@ -14,7 +15,6 @@ require (
 	github.com/agext/levenshtein v1.2.1 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect

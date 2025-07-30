@@ -92,7 +92,7 @@ func OnRunS3(ctx context.Context, deps *Deps, input *Input) (cty.Value, error) {
 
 // Register registers the handler with the engine.
 func (m *Module) Register(r *registry.Registry) {
-	r.RegisterHandler("OnRunS3", &registry.RegisteredHandler{
+	r.RegisterRunner("OnRunS3", &registry.RegisteredRunner{
 		NewInput: func() any { return new(Input) },
 		NewDeps:  func() any { return new(Deps) },
 		Fn:       OnRunS3,

@@ -29,6 +29,7 @@ type Input struct {
 	EmitData           cty.Value `hcl:"emit_data,optional"`
 	Timeout            string    `hcl:"timeout,optional"`
 	InsecureSkipVerify bool      `hcl:"insecure_skip_verify,optional"`
+	// Headers            string    `hcl:"headers"`
 }
 
 // Deps is an empty struct because this runner does not use any resources.
@@ -69,6 +70,14 @@ func OnRunSocketIO(ctx context.Context, deps *Deps, input *Input) (cty.Value, er
 	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
 	opts := socket.DefaultOptions()
 	opts.SetPath(parsedURL.Path)
+
+	// Convert map[string]string to map[string]any
+	// authHeaders := make(map[string]any, len(input.Headers))
+	// for k, v := range input.Headers {
+	// 	authHeaders[k] = v
+	// }
+	// opts.SetAuth(authHeaders)
+
 	if input.InsecureSkipVerify {
 		logger.Warn("Skipping TLS certificate verification")
 		opts.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
@@ -176,7 +185,7 @@ func OnRunSocketIO(ctx context.Context, deps *Deps, input *Input) (cty.Value, er
 
 // Register registers the handler with the engine.
 func (m *Module) Register(r *registry.Registry) {
-	r.RegisterHandler("OnRunSocketIO", &registry.RegisteredHandler{
+	r.RegisterRunner("OnRunSocketIO", &registry.RegisteredRunner{
 		NewInput: func() any { return new(Input) },
 		NewDeps:  func() any { return new(Deps) },
 		Fn:       OnRunSocketIO,

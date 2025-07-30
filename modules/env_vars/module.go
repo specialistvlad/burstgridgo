@@ -32,7 +32,7 @@ func OnRunEnvVars(ctx context.Context, deps *Deps, input any) (cty.Value, error)
 
 // Register registers the handler with the engine.
 func (m *Module) Register(r *registry.Registry) {
-	r.RegisterHandler("OnRunEnvVars", &registry.RegisteredHandler{
+	r.RegisterRunner("OnRunEnvVars", &registry.RegisteredRunner{
 		NewInput: func() any { return nil }, // No 'arguments' block.
 		NewDeps:  func() any { return new(Deps) },
 		Fn:       OnRunEnvVars,

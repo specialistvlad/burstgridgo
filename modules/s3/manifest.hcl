@@ -9,13 +9,13 @@ runner "s3" {
   input "source_path" {
     type        = string
     description = "The local path to the file to upload."
-    optional    = true
+
   }
 
   input "upload_url" {
     type        = string
     description = "The pre-signed S3 URL to upload the file to."
-    optional    = true
+
   }
 
   output "success" {

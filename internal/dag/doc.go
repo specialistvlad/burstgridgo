@@ -1,7 +1,8 @@
-// Package dag is the "Execution Layer" of the application. It is responsible
-// for taking a GridConfig blueprint from the engine, building a Directed
-// Acyclic Graph (DAG) of nodes, and executing the nodes concurrently according
-// to their dependencies.
+// Package dag is responsible for building a validated execution graph. It defines
+// the core data structures for the graph (Node, Graph) and contains the logic
+// for translating a schema.GridConfig into a Directed Acyclic Graph (DAG),
+// resolving dependencies, and detecting cycles.
 //
-// For a detailed architectural overview, see the README.md file in this directory.
+// This package does not execute the graph; that is the responsibility of the
+// 'executor' package.
 package dag
