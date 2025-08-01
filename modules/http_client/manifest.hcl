@@ -1,5 +1,5 @@
-// asset "http_client" defines a shared, persistent HTTP client that can be
-// reused across multiple steps for connection pooling and consistent configuration.
+# asset "http_client" defines a shared, persistent HTTP client that can be
+# reused across multiple steps for connection pooling and consistent configuration.
 asset "http_client" {
   description = "Provides a shared, persistent HTTP client for connection reuse."
 
@@ -15,13 +15,13 @@ asset "http_client" {
   }
 }
 
-// runner "http_request" defines a stateless action that executes a single HTTP
-// request using a shared http_client asset.
+# runner "http_request" defines a stateless action that executes a single HTTP
+# request using a shared http_client asset.
 runner "http_request" {
   description = "Executes a simple HTTP request and returns the response."
 
-  // uses declares that this runner requires an "http_client" asset. The key
-  // "client" maps to the field name in the Go handler's Deps struct.
+  # uses declares that this runner requires an "http_client" asset. The key
+  # "client" maps to the field name in the Go handler's Deps struct.
   uses "client" {
     asset_type = "http_client"
   }

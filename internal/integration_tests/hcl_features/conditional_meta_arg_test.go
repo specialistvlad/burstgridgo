@@ -6,6 +6,7 @@ import (
 
 // Test for: conditional meta arg
 func TestHclFeatures_ConditionalMetaArg(t *testing.T) {
+	t.Skip()
 	t.Skip("Feature not yet implemented: conditional 'count' meta-argument. See ADR-004 and ADR-006.")
 
 	// --- Test Implementation (for when feature is ready) ---

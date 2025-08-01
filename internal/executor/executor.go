@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/registry"
@@ -21,6 +22,7 @@ type Executor struct {
 	cleanupMutex      sync.Mutex
 	registry          *registry.Registry
 	numWorkers        int
+	converter         config.Converter
 }
 
 // New creates a new graph executor.
@@ -28,6 +30,7 @@ func New(
 	graph *dag.Graph,
 	numWorkers int,
 	reg *registry.Registry,
+	converter config.Converter,
 ) *Executor {
 	if numWorkers <= 0 {
 		numWorkers = 10 // Default to 10 if an invalid number is provided.
@@ -36,6 +39,7 @@ func New(
 		Graph:      graph,
 		numWorkers: numWorkers,
 		registry:   reg,
+		converter:  converter,
 	}
 }
 

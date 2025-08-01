@@ -20,9 +20,8 @@ runner "socketio" {
 
   }
   input "emit_data" {
-    type        = any
+    type        = object({})
     description = "The data payload to send with the emitted event."
-
   }
   input "timeout" {
     type        = string

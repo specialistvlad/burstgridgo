@@ -2,35 +2,32 @@ package integration_tests
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
-
-// mockInstanceSharingModule now only registers the necessary Go handlers.
-type mockInstanceSharingModule struct {
-	wg               *sync.WaitGroup
-	capturedPointers map[string]uintptr
-	mu               sync.Mutex
-}
 
 // sharableResource is the simple object we will be sharing.
 type sharableResource struct {
 	ID int
 }
 
-// Register registers the Go handlers for the test.
+// mockInstanceSharingModule uses the new pure-Go contract.
+type mockInstanceSharingModule struct {
+	capturedPointers map[string]uintptr
+	mu               sync.Mutex
+	completionChan   chan<- string
+}
+
 func (m *mockInstanceSharingModule) Register(r *registry.Registry) {
 	// --- "sharable_resource" Asset: Go Handlers ---
 	r.RegisterAssetHandler("CreateSharableResource", &registry.RegisteredAsset{
-		NewInput: func() any { return new(schema.StepArgs) },
+		NewInput: func() any { return new(struct{}) },
 		CreateFn: func(context.Context, any) (any, error) {
 			return &sharableResource{ID: 42}, nil
 		},
@@ -41,32 +38,35 @@ func (m *mockInstanceSharingModule) Register(r *registry.Registry) {
 
 	// --- "spy" Runner: Go Handler ---
 	type spyDeps struct {
-		Resource *sharableResource `hcl:"r"`
+		Resource *sharableResource `bggo:"r"`
 	}
 	type spyInput struct {
-		Name string `hcl:"name"`
+		Name string `bggo:"name"`
 	}
 	r.RegisterRunner("OnRunSpy", &registry.RegisteredRunner{
-		NewInput: func() any { return new(spyInput) },
-		NewDeps:  func() any { return new(spyDeps) },
-		Fn: func(_ context.Context, depsRaw any, inputRaw any) (cty.Value, error) {
-			defer m.wg.Done()
+		NewInput:  func() any { return new(spyInput) },
+		InputType: reflect.TypeOf(spyInput{}), // This line was missing
+		NewDeps:   func() any { return new(spyDeps) },
+		Fn: func(_ context.Context, depsRaw any, inputRaw any) (any, error) {
 			deps := depsRaw.(*spyDeps)
 			input := inputRaw.(*spyInput)
 			m.mu.Lock()
 			m.capturedPointers[input.Name] = reflect.ValueOf(deps.Resource).Pointer()
 			m.mu.Unlock()
-			return cty.NilVal, nil
+			if m.completionChan != nil {
+				m.completionChan <- input.Name
+			}
+			return nil, nil
 		},
 	})
 }
 
-// Test for: All dependent steps receive the exact same resource instance.
+// TestCoreExecution_ResourceInstanceSharing validates that multiple steps
+// depending on the same resource receive the exact same Go object instance.
 func TestCoreExecution_ResourceInstanceSharing(t *testing.T) {
+	t.Parallel()
 	// --- Arrange ---
-	tempDir := t.TempDir()
-
-	// 1. Define and write HCL manifests for the asset and runner.
+	const stepCount = 2
 	assetManifestHCL := `
 		asset "sharable_resource" {
 			lifecycle {
@@ -77,7 +77,9 @@ func TestCoreExecution_ResourceInstanceSharing(t *testing.T) {
 	`
 	runnerManifestHCL := `
 		runner "spy" {
-			lifecycle { on_run = "OnRunSpy" }
+			lifecycle {
+				on_run = "OnRunSpy"
+			}
 			uses "r" {
 				asset_type = "sharable_resource"
 			}
@@ -86,20 +88,6 @@ func TestCoreExecution_ResourceInstanceSharing(t *testing.T) {
 			}
 		}
 	`
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "sharable_resource"), 0755); err != nil {
-		t.Fatalf("failed to create asset module dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "spy"), 0755); err != nil {
-		t.Fatalf("failed to create runner module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/sharable_resource/manifest.hcl"), []byte(assetManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write asset manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/spy/manifest.hcl"), []byte(runnerManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write runner manifest: %v", err)
-	}
-
-	// 2. The user's grid file.
 	gridHCL := `
 		resource "sharable_resource" "A" {}
 
@@ -121,46 +109,39 @@ func TestCoreExecution_ResourceInstanceSharing(t *testing.T) {
 			}
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"modules/sharable_resource/manifest.hcl": assetManifestHCL,
+		"modules/spy/manifest.hcl":               runnerManifestHCL,
+		"main.hcl":                               gridHCL,
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// 3. Configure the app to use the temporary directory for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-	}
+	completionChan := make(chan string, stepCount)
 	mockModule := &mockInstanceSharingModule{
-		wg:               &wg,
 		capturedPointers: make(map[string]uintptr),
+		completionChan:   completionChan,
 	}
-	testApp, _ := app.SetupAppTest(t, appConfig, mockModule)
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
-	if runErr != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", runErr)
-	}
-
-	wg.Wait()
+	result := testutil.RunIntegrationTest(t, files, mockModule)
+	require.NoError(t, result.Err, "test run failed unexpectedly")
 
 	// --- Assert ---
-	if len(mockModule.capturedPointers) != 2 {
-		t.Fatalf("expected 2 captured pointers, but got %d", len(mockModule.capturedPointers))
+	completed := make(map[string]struct{})
+	for i := 0; i < stepCount; i++ {
+		select {
+		case id := <-completionChan:
+			completed[id] = struct{}{}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for steps to complete. Completed %d of %d steps. Got: %v", len(completed), stepCount, completed)
+		}
 	}
 
-	ptrB, okB := mockModule.capturedPointers["B"]
-	ptrC, okC := mockModule.capturedPointers["C"]
+	pointers := mockModule.capturedPointers
+	require.Len(t, pointers, 2, "expected 2 captured pointers")
 
-	if !okB || !okC {
-		t.Fatal("expected to capture pointers for both step 'B' and 'C'")
-	}
+	ptrB, okB := pointers["B"]
+	ptrC, okC := pointers["C"]
+	require.True(t, okB && okC, "expected to capture pointers for both steps 'B' and 'C'")
 
-	if ptrB != ptrC {
-		t.Errorf("resource instance was not shared correctly. Pointer for B: %v, Pointer for C: %v", ptrB, ptrC)
-	}
+	require.Equal(t, ptrB, ptrC, "resource instance was not shared correctly")
 }

@@ -3,16 +3,13 @@ package integration_tests
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sync"
+	"reflect"
 	"sync/atomic"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
 // --- Test-Specific Mocks ---
@@ -30,17 +27,16 @@ func (c *statefulCounter) Get() int32 {
 	return c.value.Load()
 }
 
-// mockStateModule now only registers the Go handlers.
+// mockStateModule uses the new pure-Go contract.
 type mockStateModule struct {
-	wg         *sync.WaitGroup
 	finalValue *atomic.Int32
 }
 
-// Register registers the "stateful_counter" asset and "counter_op" runner Go handlers.
+// Register registers the asset and runner Go handlers.
 func (m *mockStateModule) Register(r *registry.Registry) {
 	// --- "stateful_counter" Asset: Go Handlers ---
 	r.RegisterAssetHandler("CreateStatefulCounter", &registry.RegisteredAsset{
-		NewInput: func() any { return new(schema.StepArgs) },
+		NewInput: func() any { return new(struct{}) },
 		CreateFn: func(context.Context, any) (any, error) {
 			return new(statefulCounter), nil
 		},
@@ -51,42 +47,44 @@ func (m *mockStateModule) Register(r *registry.Registry) {
 
 	// --- "counter_op" Runner: Go Handler ---
 	type opDeps struct {
-		Counter *statefulCounter `hcl:"counter"`
+		Counter *statefulCounter `bggo:"counter"`
 	}
 	type opInput struct {
-		Action string `hcl:"action"`
+		Action string `bggo:"action"`
 	}
+	type opOutput struct {
+		Value int32 `cty:"value"`
+	}
+
 	r.RegisterRunner("OnRunCounterOp", &registry.RegisteredRunner{
-		NewInput: func() any { return new(opInput) },
-		NewDeps:  func() any { return new(opDeps) },
-		Fn: func(_ context.Context, depsRaw any, inputRaw any) (cty.Value, error) {
-			defer m.wg.Done()
+		NewInput:  func() any { return new(opInput) },
+		InputType: reflect.TypeOf(opInput{}), // This line was missing
+		NewDeps:   func() any { return new(opDeps) },
+		Fn: func(_ context.Context, depsRaw any, inputRaw any) (*opOutput, error) {
 			deps := depsRaw.(*opDeps)
 			input := inputRaw.(*opInput)
 
 			switch input.Action {
 			case "increment":
 				deps.Counter.Increment()
-				return cty.NilVal, nil
+				return nil, nil // Return nil for no output
 			case "get":
 				val := deps.Counter.Get()
 				m.finalValue.Store(val)
-				return cty.ObjectVal(map[string]cty.Value{
-					"value": cty.NumberIntVal(int64(val)),
-				}), nil
+				return &opOutput{Value: val}, nil
 			default:
-				return cty.NilVal, fmt.Errorf("unknown action: %s", input.Action)
+				return nil, fmt.Errorf("unknown action: %s", input.Action)
 			}
 		},
 	})
 }
 
-// Test for: Resource state is correctly modified across multiple steps.
+// TestCoreExecution_ResourceStateModification validates that a resource's state
+// can be modified by multiple steps in a dependency chain.
 func TestCoreExecution_ResourceStateModification(t *testing.T) {
-	// --- Arrange ---
-	tempDir := t.TempDir()
+	t.Parallel()
 
-	// 1. Define and write HCL manifests for the asset and runner.
+	// --- Arrange ---
 	assetManifestHCL := `
 		asset "stateful_counter" {
 			lifecycle {
@@ -97,7 +95,9 @@ func TestCoreExecution_ResourceStateModification(t *testing.T) {
 	`
 	runnerManifestHCL := `
 		runner "counter_op" {
-			lifecycle { on_run = "OnRunCounterOp" }
+			lifecycle {
+				on_run = "OnRunCounterOp"
+			}
 			uses "counter" {
 				asset_type = "stateful_counter"
 			}
@@ -109,68 +109,53 @@ func TestCoreExecution_ResourceStateModification(t *testing.T) {
 			}
 		}
 	`
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "stateful_counter"), 0755); err != nil {
-		t.Fatalf("failed to create asset module dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "counter_op"), 0755); err != nil {
-		t.Fatalf("failed to create runner module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/stateful_counter/manifest.hcl"), []byte(assetManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write asset manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/counter_op/manifest.hcl"), []byte(runnerManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write runner manifest: %v", err)
-	}
-
-	// 2. The user's grid file.
 	gridHCL := `
 		resource "stateful_counter" "shared" {}
 
 		step "counter_op" "inc_A" {
-			uses { counter = resource.stateful_counter.shared }
-			arguments { action = "increment" }
+			uses {
+				counter = resource.stateful_counter.shared
+			}
+			arguments {
+				action = "increment"
+			}
 		}
 
 		step "counter_op" "inc_B" {
-			uses { counter = resource.stateful_counter.shared }
-			arguments { action = "increment" }
+			uses {
+				counter = resource.stateful_counter.shared
+			}
+			arguments {
+				action = "increment"
+			}
 			depends_on = ["counter_op.inc_A"]
 		}
 
 		step "counter_op" "get_final" {
-			uses { counter = resource.stateful_counter.shared }
-			arguments { action = "get" }
+			uses {
+				counter = resource.stateful_counter.shared
+			}
+			arguments {
+				action = "get"
+			}
 			depends_on = ["counter_op.inc_B"]
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"modules/stateful_counter/manifest.hcl": assetManifestHCL,
+		"modules/counter_op/manifest.hcl":       runnerManifestHCL,
+		"main.hcl":                              gridHCL,
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(3)
 
 	var finalValue atomic.Int32
-	// 3. Configure the app to use the temporary directory for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-	}
-	mockModule := &mockStateModule{wg: &wg, finalValue: &finalValue}
-	testApp, _ := app.SetupAppTest(t, appConfig, mockModule)
+	mockModule := &mockStateModule{finalValue: &finalValue}
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
-	if runErr != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", runErr)
-	}
-
-	wg.Wait()
+	result := testutil.RunIntegrationTest(t, files, mockModule)
 
 	// --- Assert ---
+	require.NoError(t, result.Err, "test run failed unexpectedly")
+
 	finalCount := finalValue.Load()
-	if finalCount != 2 {
-		t.Errorf("expected final counter value to be 2, but got %d", finalCount)
-	}
+	require.Equal(t, int32(2), finalCount, "expected final counter value to be 2")
 }

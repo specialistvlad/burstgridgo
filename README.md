@@ -4,8 +4,8 @@
   <a href="https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml">
     <img src="https://github.com/specialistvlad/burstgridgo/actions/workflows/ci.yml/badge.svg" alt="Go CI">
   </a>
-  <a href="https://codecov.io/github/specialistvlad/burstgridgo" > 
-    <img src="https://codecov.io/github/specialistvlad/burstgridgo/graph/badge.svg?token=SZRP5JPQBC"/> 
+  <a href="https://codecov.io/github/specialistvlad/burstgridgo" >
+    <img src="https://codecov.io/github/specialistvlad/burstgridgo/graph/badge.svg?token=SZRP5JPQBC"/>
   </a>
   <a href="https://github.com/specialistvlad/burstgridgo/graphs/commit-activity">
     <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/specialistvlad/burstgridgo">
@@ -25,7 +25,7 @@
 
 **⚠️ Important Note: Project Status ⚠️**
 
-The project is currently under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. This project is not recommended for external production use; it is intended for testing and development of `burstgridgo` itself.
+This project is currently under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. This project is not recommended for external production use; it is intended for testing and development of `burstgridgo` itself.
 
 
 `burstgridgo` is a Go-native, declarative load testing tool for simulating real-world, protocol-aware workflows using HCL.
@@ -33,7 +33,8 @@ The project is currently under active development. The API and internal architec
 ## Core Features
 * **✅ Declarative Grids (HCL)**: Define complex, multi-protocol workflows in simple, composable HCL files. Make your test plans readable, versionable, and easy to manage.
 * **✅ Intelligent Concurrency (DAG)**: The engine automatically builds a dependency graph (DAG) from your grid, running independent tasks in parallel for maximum efficiency. Dependencies are inferred automatically from variable usage.
-* **✅ Extensible by Design**: Missing a protocol? `burstgridgo` is built on a simple Go `Runner` interface. Implement your own logic and immediately use it as a module in your HCL grid.
+* **✅ Unified Configuration**: The loader treats all `.hcl` files as a single collection. Co-locate your `runner` definitions and `step` instances in the same file for simpler tests and layouts.
+* **✅ Extensible by Design**: Missing a protocol? `burstgridgo` is built on a simple Go `Module` interface. Implement your own logic and immediately use it as a module in your HCL grid.
 
 To see what's coming next, check out our full "Project Roadmap" below.
 
@@ -106,11 +107,13 @@ Our vision is to create the best tool for defining complex load tests as code. T
 #### Pillar: Core Engine & HCL
 This pillar covers the foundational execution engine, HCL parsing capabilities, and the overall architecture.
 
-* **✅ Foundational DAG Executor**: The core engine, which builds a dependency graph from HCL, resolves dependencies (both implicit and explicit), and executes nodes concurrently, is fully implemented and includes cycle detection.
+* **✅ Foundational DAG Executor**: The core engine, which builds a dependency graph, resolves dependencies (both implicit and explicit), and executes nodes concurrently, is fully implemented and includes cycle detection.
 * **✅ Extensible Runner/Asset Architecture**: The system for defining stateless `runners` and stateful `assets` via HCL manifests and registering their Go implementations is complete. (See `ADR-001`)
 * **✅ Stateful Resource Management**: The full lifecycle for `resource` blocks—including creation, destruction, and sharing instances between steps via the `uses` block—is implemented.
+* **✅ Pluggable & Unified Configuration**: The configuration loading system has been refactored to be format-agnostic. It now treats all `.hcl` files as a single, unified collection, allowing definitions and instances to be co-located. (See `ADR-007`)
+* **✅ Pure Go Modules**: Modules are now fully decoupled from HCL. Module authors write pure Go functions and use generic `bggo:"..."` and `cty:"..."` struct tags to define their data contracts, with the core engine handling all data translation. (See `ADR-008`)
 * **✅ Fail-Fast Execution**: The executor correctly cancels all running tasks as soon as one node fails, ensuring rapid feedback on errors.
-* **💡 Dynamic Workflows & Meta-Arguments**: Full support for HCL features like `count`, `for_each`, and conditional logic is a top priority and is currently in the planning and design phase. (See `ADR-004`)
+* **💡 Dynamic Workflows & Meta-Arguments**: Full support for HCL features like `count`, `for_each`, and conditional logic is a top priority and is currently in the planning and design phase.
 
 ---
 
@@ -140,7 +143,7 @@ This pillar covers the expansion of our library of built-in runners and assets t
 
 **Existing Implemented Modules**
 * **✅ HTTP**: Includes the `http_request` runner and `http_client` asset.
-* **✅ Socket.IO**: Includes the `socketio_client` asset, `socketio_request` runner, and a basic stateless `socketio` runner.
+* **✅ Socket.IO**: Includes the `socketio_client` asset and `socketio_request` runner.
 * **✅ S3**: Includes a basic `s3` runner for uploading to pre-signed URLs.
 * **✅ Utilities**: Includes core runners `env_vars` and `print`.
 
@@ -150,7 +153,7 @@ This pillar covers the expansion of our library of built-in runners and assets t
 This pillar is focused on providing users with actionable data and visualizations from their test runs. This area is largely in the design/planning phase.
 
 * **💡 Native OpenTelemetry (OTLP) Export**: Add first-class support for exporting traces and metrics to OTLP-compatible backends like Jaeger or Honeycomb.
-* **💡 Live Terminal UI (TUI)**: Build an interactive terminal dashboard for a real-time view of test execution, including throughput, latency, and errors. (See `ADR-010`)
+* **💡 Live Terminal UI (TUI)**: Build an interactive terminal dashboard for a real-time view of test execution, including throughput, latency, and errors. (See `ADR-004`)
 * **💡 DAG Visualization Command**: Implement a `bggo graph` command to output a visual representation of the execution graph (e.g., in Mermaid or DOT format).
 * **💡 Prometheus Metrics Endpoint**: Provide an optional `/metrics` endpoint for scraping performance data during a test run.
 
@@ -160,12 +163,11 @@ This pillar is focused on providing users with actionable data and visualization
 This pillar covers everything that makes the project easier to develop, test, and contribute to.
 
 * **✅ Containerized Development Environment**: A multi-stage `Dockerfile` and `Makefile` provide a one-command setup for a live-reloading development environment (`make dev`).
-* **✅ Core Internal Refactoring**: The application has been successfully refactored into decoupled internal packages (`app`, `cli`, `engine`, `dag`, `dag`, `schema`) for improved maintainability. (See `ADR-005`)
-* **🏗️ Comprehensive Integration Test Suite**: The foundation for integration testing is in place (see `ADR-002`, `ADR-003`), but the full suite of tests outlined in `ADR-006` covering all HCL features and failure modes is currently being implemented.
+* **✅ Core Internal Refactoring**: The application has been successfully refactored into decoupled internal packages (`app`, `cli`, `config`, `hcl`, `dag`, `executor`) for improved maintainability. (See `ADR-002`)
+* **✅ Comprehensive Integration Test Suite**: A robust integration test suite is in place, validating core HCL features, concurrency patterns, and error handling. (See `ADR-003`)
 * **💡 `bggo-builder` Tool**: A planned command-line tool to bootstrap and package third-party modules to foster a community ecosystem.
-* **Revisit Module system** for external engine.HandlerRegistry/engine.AssetHandlerRegistry, as they are currently global registries.
+* **💡 External Module System**: Revisit the module system to allow for dynamic, third-party module registration.
 
 ## Learn More
-* **Roadmap & Vision**: [See where the project is headed.](./ROADMAP.md)
-* **Architecture Deep Dive**: [Learn how `burstgridgo` works internally.](./docs/ARCHITECTURE.md)
+* **Architecture Deep Dive**: [Learn how `burstgridgo` works internally.](./internal/Readme.md)
 * **Contributing Guide**: [Find out how you can help.](./CONTRIBUTING.md)

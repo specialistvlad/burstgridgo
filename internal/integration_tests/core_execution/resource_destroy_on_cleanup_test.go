@@ -2,28 +2,25 @@ package integration_tests
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// mockDestroySpyModule is a self-contained module for this specific test.
-// It now only registers the required Go handlers.
+// mockDestroySpyModule is a test-specific module that registers a resource
+// which counts how many times its Destroy handler is called.
 type mockDestroySpyModule struct {
 	destroyCalls *atomic.Int32
 }
 
-// Register registers the Go handlers for the "destroy_spy_resource" asset and "dummy" runner.
 func (m *mockDestroySpyModule) Register(r *registry.Registry) {
-	// --- "destroy_spy_resource" Asset: Go Handlers ---
+	// Asset with a counting Destroy handler.
 	r.RegisterAssetHandler("CreateDestroySpyResource", &registry.RegisteredAsset{
-		NewInput: func() any { return new(schema.StepArgs) },
+		NewInput: func() any { return new(struct{}) },
 		CreateFn: func(context.Context, any) (any, error) {
 			return "dummy_instance", nil
 		},
@@ -35,23 +32,24 @@ func (m *mockDestroySpyModule) Register(r *registry.Registry) {
 		},
 	})
 
-	// --- "dummy" Runner: Go Handler ---
+	// Runner that uses the resource.
 	type dummyDeps struct {
-		R any `hcl:"r"`
+		R any `bggo:"r"`
 	}
 	r.RegisterRunner("OnRunDummy", &registry.RegisteredRunner{
-		NewInput: func() any { return new(schema.StepArgs) },
-		NewDeps:  func() any { return new(dummyDeps) },
-		Fn:       func(context.Context, any, any) (cty.Value, error) { return cty.NilVal, nil },
+		NewInput:  func() any { return new(struct{}) },
+		InputType: reflect.TypeOf(struct{}{}),
+		NewDeps:   func() any { return new(dummyDeps) },
+		Fn:        func(context.Context, any, any) (any, error) { return nil, nil },
 	})
 }
 
-// Test for: Resource `Destroy` handler is called once on cleanup.
+// TestCoreExecution_ResourceDestroyOnCleanup validates that a resource's
+// Destroy handler is called once during application cleanup.
 func TestCoreExecution_ResourceDestroyOnCleanup(t *testing.T) {
-	// --- Arrange ---
-	tempDir := t.TempDir()
+	t.Parallel()
 
-	// 1. Define and write the HCL manifest for the asset.
+	// --- Arrange ---
 	assetManifestHCL := `
 		asset "destroy_spy_resource" {
 			lifecycle {
@@ -60,15 +58,6 @@ func TestCoreExecution_ResourceDestroyOnCleanup(t *testing.T) {
 			}
 		}
 	`
-	assetModuleDir := filepath.Join(tempDir, "modules", "destroy_spy_resource")
-	if err := os.MkdirAll(assetModuleDir, 0755); err != nil {
-		t.Fatalf("failed to create asset module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(assetModuleDir, "manifest.hcl"), []byte(assetManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write asset manifest: %v", err)
-	}
-
-	// 2. Define and write the HCL manifest for the runner.
 	runnerManifestHCL := `
 		runner "dummy" {
 			lifecycle { on_run = "OnRunDummy" }
@@ -77,15 +66,6 @@ func TestCoreExecution_ResourceDestroyOnCleanup(t *testing.T) {
 			}
 		}
 	`
-	runnerModuleDir := filepath.Join(tempDir, "modules", "dummy")
-	if err := os.MkdirAll(runnerModuleDir, 0755); err != nil {
-		t.Fatalf("failed to create runner module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(runnerModuleDir, "manifest.hcl"), []byte(runnerManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write runner manifest: %v", err)
-	}
-
-	// 3. The user's grid file.
 	gridHCL := `
 		resource "destroy_spy_resource" "A" {}
 
@@ -95,29 +75,21 @@ func TestCoreExecution_ResourceDestroyOnCleanup(t *testing.T) {
 			}
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"modules/destroy_spy_resource/manifest.hcl": assetManifestHCL,
+		"modules/dummy/manifest.hcl":                runnerManifestHCL,
+		"main.hcl":                                  gridHCL,
 	}
 
 	var destroyCalls atomic.Int32
-	// 4. Configure the app to use the temporary directory for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-	}
 	mockModule := &mockDestroySpyModule{destroyCalls: &destroyCalls}
-	testApp, _ := app.SetupAppTest(t, appConfig, mockModule)
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
-	if runErr != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", runErr)
-	}
+	result := testutil.RunIntegrationTest(t, files, mockModule)
 
 	// --- Assert ---
+	require.NoError(t, result.Err, "app.Run() returned an unexpected error")
+
 	finalCallCount := destroyCalls.Load()
-	if finalCallCount != 1 {
-		t.Errorf("expected resource Destroy handler to be called 1 time, but it was called %d times", finalCallCount)
-	}
+	require.Equal(t, int32(1), finalCallCount, "expected resource Destroy handler to be called 1 time, but it was called %d times", finalCallCount)
 }

@@ -2,27 +2,24 @@ package integration_tests
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"reflect"
 	"sync/atomic"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// mockCreateOnceModule now only registers the Go handlers for its asset and runner.
+// mockCreateOnceModule registers a resource that counts its creation calls.
 type mockCreateOnceModule struct {
 	createCalls *atomic.Int32
 }
 
-// Register registers the "counting_resource" asset and "spy" runner Go handlers.
 func (m *mockCreateOnceModule) Register(r *registry.Registry) {
-	// --- "counting_resource" Asset: Go Handlers ---
+	// Asset that counts how many times its CreateFn is called.
 	r.RegisterAssetHandler("CreateCountingResource", &registry.RegisteredAsset{
-		NewInput: func() any { return new(schema.StepArgs) },
+		NewInput: func() any { return new(struct{}) },
 		CreateFn: func(context.Context, any) (any, error) {
 			m.createCalls.Add(1)
 			return "dummy_resource_instance", nil
@@ -32,23 +29,24 @@ func (m *mockCreateOnceModule) Register(r *registry.Registry) {
 		DestroyFn: func(any) error { return nil },
 	})
 
-	// --- "spy" Runner: Go Handler ---
+	// Runner that depends on the counting resource.
 	type spyDeps struct {
-		R any `hcl:"r"`
+		R any `bggo:"r"` // Updated to bggo tag
 	}
 	r.RegisterRunner("OnRunSpy", &registry.RegisteredRunner{
-		NewInput: func() any { return new(schema.StepArgs) },
-		NewDeps:  func() any { return new(spyDeps) },
-		Fn:       func(context.Context, any, any) (cty.Value, error) { return cty.NilVal, nil },
+		NewInput:  func() any { return new(struct{}) },
+		InputType: reflect.TypeOf(struct{}{}),
+		NewDeps:   func() any { return new(spyDeps) },
+		Fn:        func(context.Context, any, any) (any, error) { return nil, nil },
 	})
 }
 
-// Test for: Resource `Create` handler is called only once per instance.
+// TestCoreExecution_ResourceCreateHandlerCalledOnce validates that a resource's
+// Create handler is called only once, even if multiple steps depend on it.
 func TestCoreExecution_ResourceCreateHandlerCalledOnce(t *testing.T) {
-	// --- Arrange ---
-	tempDir := t.TempDir()
+	t.Parallel()
 
-	// 1. Define and write the HCL manifest for the "counting_resource" asset.
+	// --- Arrange ---
 	assetManifestHCL := `
 		asset "counting_resource" {
 			lifecycle {
@@ -57,15 +55,6 @@ func TestCoreExecution_ResourceCreateHandlerCalledOnce(t *testing.T) {
 			}
 		}
 	`
-	assetModuleDir := filepath.Join(tempDir, "modules", "counting_resource")
-	if err := os.MkdirAll(assetModuleDir, 0755); err != nil {
-		t.Fatalf("failed to create asset module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(assetModuleDir, "manifest.hcl"), []byte(assetManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write asset manifest: %v", err)
-	}
-
-	// 2. Define and write the HCL manifest for the "spy" runner.
 	runnerManifestHCL := `
 		runner "spy" {
 			lifecycle { on_run = "OnRunSpy" }
@@ -74,15 +63,7 @@ func TestCoreExecution_ResourceCreateHandlerCalledOnce(t *testing.T) {
 			}
 		}
 	`
-	runnerModuleDir := filepath.Join(tempDir, "modules", "spy")
-	if err := os.MkdirAll(runnerModuleDir, 0755); err != nil {
-		t.Fatalf("failed to create runner module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(runnerModuleDir, "manifest.hcl"), []byte(runnerManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write runner manifest: %v", err)
-	}
-
-	// 3. This HCL defines one resource and two steps that both depend on it.
+	// HCL defines one resource instance and two steps that depend on it.
 	gridHCL := `
 		resource "counting_resource" "A" {}
 
@@ -98,29 +79,21 @@ func TestCoreExecution_ResourceCreateHandlerCalledOnce(t *testing.T) {
 			}
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"modules/counting_resource/manifest.hcl": assetManifestHCL,
+		"modules/spy/manifest.hcl":               runnerManifestHCL,
+		"main.hcl":                               gridHCL,
 	}
 
 	var createCalls atomic.Int32
-	// 4. Configure the app to use the temporary directory for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-	}
 	mockModule := &mockCreateOnceModule{createCalls: &createCalls}
-	testApp, _ := app.SetupAppTest(t, appConfig, mockModule)
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
-	if runErr != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", runErr)
-	}
+	result := testutil.RunIntegrationTest(t, files, mockModule)
 
 	// --- Assert ---
+	require.NoError(t, result.Err, "app.Run() returned an unexpected error")
+
 	finalCallCount := createCalls.Load()
-	if finalCallCount != 1 {
-		t.Errorf("expected resource Create handler to be called 1 time, but it was called %d times", finalCallCount)
-	}
+	require.Equal(t, int32(1), finalCallCount, "expected resource Create handler to be called 1 time, but it was called %d times", finalCallCount)
 }

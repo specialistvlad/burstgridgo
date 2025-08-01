@@ -6,6 +6,7 @@ import (
 
 // Test for: foreach meta arg
 func TestHclFeatures_ForEachMetaArg(t *testing.T) {
+	t.Skip()
 	t.Skip("Feature not yet implemented: 'for_each' meta-argument. See ADR-004 and ADR-006.")
 
 	// --- Test Implementation (for when feature is ready) ---

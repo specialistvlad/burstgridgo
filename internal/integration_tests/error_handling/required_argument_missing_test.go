@@ -2,86 +2,62 @@ package integration_tests
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// mockRequiredArgModule only registers the Go handler for the runner.
-type mockRequiredArgModule struct{}
-
-// Register registers the "required_arg_runner" Go handler.
-func (m *mockRequiredArgModule) Register(r *registry.Registry) {
-	type runnerInput struct {
-		Name string `hcl:"name"`
-	}
-	r.RegisterRunner("OnRunRequiredArg", &registry.RegisteredRunner{
-		NewInput: func() any { return new(runnerInput) },
-		NewDeps:  func() any { return new(struct{}) },
-		Fn:       func(context.Context, any, any) (cty.Value, error) { return cty.NilVal, nil },
-	})
-}
-
-// Test for: App run fails if a required runner argument is missing.
+// TestErrorHandling_RequiredArgumentMissing_FailsRun validates that the application
+// fails when a step omits a required argument defined in the manifest.
 func TestErrorHandling_RequiredArgumentMissing_FailsRun(t *testing.T) {
+	t.Parallel()
 	// --- Arrange ---
-	tempDir := t.TempDir()
-
-	// 1. Define and write the HCL manifest for the runner, declaring "name" as a required input.
 	manifestHCL := `
 		runner "required_arg_runner" {
-			lifecycle { on_run = "OnRunRequiredArg" }
+			lifecycle {
+				on_run = "OnRunRequiredArg"
+			}
 			input "name" {
 				type = string
-				# 'optional' is false by default, making this required.
+				# 'optional = false' is the default, so this is required.
 			}
 		}
 	`
-	moduleDir := filepath.Join(tempDir, "modules", "required_arg_runner")
-	if err := os.MkdirAll(moduleDir, 0755); err != nil {
-		t.Fatalf("failed to create module directory: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(moduleDir, "manifest.hcl"), []byte(manifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write manifest: %v", err)
-	}
-
-	// 2. This HCL is invalid because the 'name' argument for the step is missing.
+	// This grid HCL is invalid because the 'arguments' block is empty.
 	gridHCL := `
 		step "required_arg_runner" "A" {
-			arguments {
-				# The required 'name' argument is omitted here.
-			}
+			arguments {}
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"modules/required_arg_runner/manifest.hcl": manifestHCL,
+		"main.hcl": gridHCL,
 	}
 
-	// 3. Configure the app for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
+	// Define the input struct and the mock module for the test.
+	type runnerInput struct {
+		Name string `bggo:"name"`
 	}
-	testApp, _ := app.SetupAppTest(t, appConfig, &mockRequiredArgModule{})
+	mockModule := &testutil.SimpleModule{
+		RunnerName: "OnRunRequiredArg",
+		Runner: &registry.RegisteredRunner{
+			NewInput:  func() any { return new(runnerInput) },
+			InputType: reflect.TypeOf(runnerInput{}),
+			NewDeps:   func() any { return new(struct{}) },
+			Fn:        func(context.Context, any, any) (any, error) { return nil, nil },
+		},
+	}
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
+	result := testutil.RunIntegrationTest(t, files, mockModule)
 
 	// --- Assert ---
-	if runErr == nil {
-		t.Fatal("app.Run() should have returned an error for a missing required argument, but it returned nil")
-	}
+	require.Error(t, result.Err, "app.Run() should have returned an error for a missing required argument")
 
-	// Check for the error message that the HCL library produces.
-	errMsg := runErr.Error()
-	expectedErrorSubstring := `The argument "name" is required`
-	if !strings.Contains(errMsg, expectedErrorSubstring) {
-		t.Errorf("expected error message to contain %q, but got: %s", expectedErrorSubstring, errMsg)
-	}
+	expectedErrorSubstring := `missing required argument "name"`
+	require.True(t, strings.Contains(result.Err.Error(), expectedErrorSubstring), "error message mismatch, got: %v", result.Err)
 }

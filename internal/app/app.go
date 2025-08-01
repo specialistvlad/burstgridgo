@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/registry"
 )
@@ -22,51 +23,64 @@ type AppConfig struct {
 
 // App encapsulates the application's dependencies, configuration, and lifecycle.
 type App struct {
-	outW     io.Writer
-	logger   *slog.Logger
-	registry *registry.Registry
+	outW      io.Writer
+	logger    *slog.Logger
+	registry  *registry.Registry
+	config    *config.Model
+	converter config.Converter
 }
 
 // NewApp is the constructor for the main application. It returns a fully
 // initialized App instance, including its own isolated logger and registry.
-// It accepts an optional list of modules to register, which is used for testing.
-func NewApp(outW io.Writer, appConfig *AppConfig, modules ...registry.Module) *App {
+func NewApp(outW io.Writer, appConfig *AppConfig, loader config.Loader, modules ...registry.Module) *App {
 	logger := newLogger(appConfig.LogLevel, appConfig.LogFormat, outW)
+	ctx := ctxlog.WithLogger(context.Background(), logger)
 	logger.Debug("Logger configured successfully.")
 
+	// Merge all configuration paths into a single collection for the loader.
+	var configPaths []string
+	if appConfig.GridPath != "" {
+		configPaths = append(configPaths, appConfig.GridPath)
+	}
+	if appConfig.ModulesPath != "" {
+		configPaths = append(configPaths, appConfig.ModulesPath)
+	}
+
+	// Load all configuration into the format-agnostic model first.
+	cfgModel, converter, err := loader.Load(ctx, configPaths...)
+	if err != nil {
+		// A failure to load config is a fatal startup error.
+		panic(fmt.Errorf("failed to load configuration: %w", err))
+	}
+	logger.Debug("Configuration loaded and translated into unified model.")
+
+	// Create and populate the registry with Go handlers.
 	reg := registry.New()
-	// If no modules are passed, use the default core modules.
 	if len(modules) == 0 {
 		modules = coreModules
 	}
-
 	for _, mod := range modules {
 		mod.Register(reg)
 	}
 	logger.Debug("All Go modules registered.", "count", len(modules))
 
-	// Discover HCL module definitions from the filesystem *before* validation.
-	ctx := ctxlog.WithLogger(context.Background(), logger)
-	if appConfig.ModulesPath != "" {
-		logger.Debug("Starting module discovery...", "path", appConfig.ModulesPath)
-		if err := DiscoverModules(ctx, appConfig.ModulesPath, reg); err != nil {
-			// A failure to discover modules is a fatal startup error.
-			panic(fmt.Errorf("failed to discover modules: %w", err))
-		}
-		logger.Debug("HCL module discovery complete.")
-	}
+	// Populate the registry's definitions from the loaded config model.
+	reg.PopulateDefinitionsFromModel(cfgModel)
+	logger.Debug("Registry definitions populated from config model.")
 
-	// Validate the integrity of the registry after all definitions are loaded.
+	// Validate the integrity of the registry.
 	if err := reg.ValidateRegistry(); err != nil {
-		// This is a programmer error (a mismatch between code and HCL), so we panic.
+		// This is a programmer error (mismatch between code and config), so we panic.
 		panic(err)
 	}
 	logger.Debug("Registry validation passed.")
 
 	return &App{
-		outW:     outW,
-		logger:   logger,
-		registry: reg,
+		outW:      outW,
+		logger:    logger,
+		registry:  reg,
+		config:    cfgModel,
+		converter: converter,
 	}
 }
 

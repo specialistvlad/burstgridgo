@@ -2,143 +2,124 @@ package integration_tests
 
 import (
 	"context"
-	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// mockDataPassingModule is a self-contained module for this specific test.
-// It now only registers the Go handlers.
+// mockDataPassingModule is updated for the ADR-008 pure Go contract.
 type mockDataPassingModule struct {
-	wg            *sync.WaitGroup
-	sourceOutput  cty.Value
-	capturedInput cty.Value
+	sourceOutput  any
+	capturedInput any
 	mu            sync.Mutex
 }
 
 // Register registers the "source" and "spy" Go handlers.
 func (m *mockDataPassingModule) Register(r *registry.Registry) {
-	// --- "source" Runner: Go Handler ---
+	// --- "source" Runner: Returns a pure Go struct ---
 	r.RegisterRunner("OnRunSource", &registry.RegisteredRunner{
-		NewInput: func() any { return new(schema.StepArgs) },
-		NewDeps:  func() any { return new(struct{}) },
-		Fn:       func(context.Context, any, any) (cty.Value, error) { return m.sourceOutput, nil },
+		NewInput:  func() any { return new(struct{}) },
+		InputType: reflect.TypeOf(struct{}{}),
+		NewDeps:   func() any { return new(struct{}) },
+		Fn:        func(context.Context, any, any) (any, error) { return m.sourceOutput, nil },
 	})
 
-	// --- "spy" Runner: Go Handler ---
+	// --- "spy" Runner: Receives the data ---
 	type spyInput struct {
-		Value cty.Value `hcl:"input"`
+		// This field is now strongly typed to match the expected data structure.
+		Input complexData `bggo:"Input"`
 	}
 	r.RegisterRunner("OnRunSpy", &registry.RegisteredRunner{
-		NewInput: func() any { return new(spyInput) },
-		NewDeps:  func() any { return new(struct{}) },
-		Fn: func(_ context.Context, _ any, inputRaw any) (cty.Value, error) {
+		NewInput:  func() any { return new(spyInput) },
+		InputType: reflect.TypeOf(spyInput{}),
+		NewDeps:   func() any { return new(struct{}) },
+		Fn: func(_ context.Context, _ any, inputRaw any) (any, error) {
 			m.mu.Lock()
-			m.capturedInput = inputRaw.(*spyInput).Value
+			// The captured input is now a `complexData` struct, not a generic map.
+			m.capturedInput = inputRaw.(*spyInput).Input
 			m.mu.Unlock()
-			m.wg.Done()
-			return cty.NilVal, nil
+			return nil, nil
 		},
 	})
 }
 
-// Test for: Complex data (objects, lists) passes correctly between steps.
-func TestCoreExecution_ComplexDataPassing(t *testing.T) {
-	// --- Arrange ---
-	tempDir := t.TempDir()
+// --- Structs for complex data with CTY tags for output ---
 
-	// 1. Define and write the HCL manifests for the "source" and "spy" runners.
+type complexMetadata struct {
+	Owner string `cty:"owner"`
+}
+
+type complexItem struct {
+	ItemID int `cty:"item_id"`
+}
+
+type complexData struct {
+	ID       int             `cty:"id"`
+	Name     string          `cty:"name"`
+	Enabled  bool            `cty:"enabled"`
+	Metadata complexMetadata `cty:"metadata"`
+	Items    []complexItem   `cty:"items"`
+}
+
+// TestCoreExecution_ComplexDataPassing validates that complex, nested Go structs
+// can be passed between steps correctly by leveraging the cty and bggo tags.
+func TestCoreExecution_ComplexDataPassing(t *testing.T) {
+	t.Parallel()
+	// --- Arrange ---
 	sourceManifestHCL := `
 		runner "source" {
 			lifecycle { on_run = "OnRunSource" }
-			output "data" {
-				type = any
-			}
+			output "data" { type = any }
 		}
 	`
 	spyManifestHCL := `
 		runner "spy" {
 			lifecycle { on_run = "OnRunSpy" }
-			input "input" {
-				type = any
-			}
+			input "Input" { type = any }
 		}
 	`
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "source"), 0755); err != nil {
-		t.Fatalf("failed to create source module dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "spy"), 0755); err != nil {
-		t.Fatalf("failed to create spy module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/source/manifest.hcl"), []byte(sourceManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write source manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/spy/manifest.hcl"), []byte(spyManifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write spy manifest: %v", err)
-	}
-
-	// 2. Define the complex, nested data structure we will pass.
-	expectedData := cty.ObjectVal(map[string]cty.Value{
-		"id":      cty.NumberIntVal(99),
-		"name":    cty.StringVal("complex-object"),
-		"enabled": cty.BoolVal(true),
-		"metadata": cty.ObjectVal(map[string]cty.Value{
-			"owner": cty.StringVal("test-suite"),
-		}),
-		"items": cty.ListVal([]cty.Value{
-			cty.ObjectVal(map[string]cty.Value{"item_id": cty.NumberIntVal(1)}),
-			cty.ObjectVal(map[string]cty.Value{"item_id": cty.NumberIntVal(2)}),
-		}),
-	})
-
-	// 3. The HCL grid wires the source's output directly to the spy's input.
 	gridHCL := `
 		step "source" "A" {
 			arguments {}
 		}
-
 		step "spy" "B" {
 			arguments {
-				input = step.source.A.output
+				Input = step.source.A.output
 			}
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		filepath.Join("modules", "source", "manifest.hcl"): sourceManifestHCL,
+		filepath.Join("modules", "spy", "manifest.hcl"):    spyManifestHCL,
+		"main.hcl": gridHCL,
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	// This is the pure Go struct that the source module will return.
+	nativeData := complexData{
+		ID:       99,
+		Name:     "complex-object",
+		Enabled:  true,
+		Metadata: complexMetadata{Owner: "test-suite"},
+		Items:    []complexItem{{ItemID: 1}, {ItemID: 2}},
+	}
 
-	// 4. Configure the app to use the temporary directory for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-	}
-	mockModule := &mockDataPassingModule{
-		wg:           &wg,
-		sourceOutput: expectedData,
-	}
-	testApp, _ := app.SetupAppTest(t, appConfig, mockModule)
+	mockModule := &mockDataPassingModule{sourceOutput: nativeData}
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
-	if runErr != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", runErr)
-	}
-
-	wg.Wait()
+	result := testutil.RunIntegrationTest(t, files, mockModule)
 
 	// --- Assert ---
-	if diff := cmp.Diff(expectedData.GoString(), mockModule.capturedInput.GoString()); diff != "" {
+	require.NoError(t, result.Err, "Run failed unexpectedly. Full logs:\n%s", result.LogOutput)
+
+	// Now that the input is strongly typed, we can directly compare the
+	// original struct with the one that made the round trip.
+	if diff := cmp.Diff(nativeData, mockModule.capturedInput); diff != "" {
 		t.Errorf("Captured complex data mismatch (-want +got):\n%s", diff)
 	}
 }

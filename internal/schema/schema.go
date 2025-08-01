@@ -2,7 +2,6 @@ package schema
 
 import (
 	"github.com/hashicorp/hcl/v2"
-	"github.com/zclconf/go-cty/cty"
 )
 
 // --- Primary Grid Structures ---
@@ -64,7 +63,8 @@ type InputDefinition struct {
 	Name        string         `hcl:"name,label"`
 	Type        hcl.Expression `hcl:"type"`
 	Description string         `hcl:"description,optional"`
-	Default     *cty.Value     `hcl:"default,optional"`
+	// Default is now an expression to be evaluated by the translator.
+	Default hcl.Expression `hcl:"default,optional"`
 }
 
 // OutputDefinition defines a single output value produced by a runner or asset.

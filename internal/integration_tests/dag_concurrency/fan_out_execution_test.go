@@ -1,95 +1,90 @@
 package integration_tests
 
 import (
-	"context"
-	"os"
-	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// Test for: Fan-out execution runs nodes in parallel.
+// TestDagConcurrency_FanOutExecutionTest validates that nodes in a fan-out
+// structure run concurrently.
 func TestDagConcurrency_FanOutExecutionTest(t *testing.T) {
+	t.Parallel()
 	// --- Arrange ---
-	tempDir := t.TempDir()
-
-	// 1. Define and write the HCL manifest for the "sleeper" runner.
+	const stepCount = 4
 	manifestHCL := `
-		runner "sleeper" {
-			lifecycle { on_run = "OnRunSleeper" }
-			input "id" {
-				type = string
-			}
-		}
-	`
-	moduleDir := filepath.Join(tempDir, "modules", "sleeper")
-	if err := os.MkdirAll(moduleDir, 0755); err != nil {
-		t.Fatalf("failed to create module directory: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(moduleDir, "manifest.hcl"), []byte(manifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write manifest: %v", err)
-	}
-
-	// 2. Define the user's grid file with a fan-out dependency structure.
+        runner "sleeper" {
+            lifecycle {
+                on_run = "OnRunSleeper"
+            }
+            input "id" {
+                type = string
+            }
+        }
+    `
 	gridHCL := `
-		step "sleeper" "A" {
-			arguments { id = "A" }
-		}
-		step "sleeper" "B" {
-			arguments { id = "B" }
-			depends_on = ["sleeper.A"]
-		}
-		step "sleeper" "C" {
-			arguments { id = "C" }
-			depends_on = ["sleeper.A"]
-		}
-		step "sleeper" "D" {
-			arguments { id = "D" }
-			depends_on = ["sleeper.A"]
-		}
-	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+        step "sleeper" "A" {
+            arguments {
+                id = "A"
+            }
+        }
+        step "sleeper" "B" {
+            arguments {
+                id = "B"
+            }
+            depends_on = ["sleeper.A"]
+        }
+        step "sleeper" "C" {
+            arguments {
+                id = "C"
+            }
+            depends_on = ["sleeper.A"]
+        }
+        step "sleeper" "D" {
+            arguments {
+                id = "D"
+            }
+            depends_on = ["sleeper.A"]
+        }
+    `
+	files := map[string]string{
+		"modules/sleeper/manifest.hcl": manifestHCL,
+		"main.hcl":                     gridHCL,
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(4)
-
-	// 3. Configure the app for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-		WorkerCount: 4,
-	}
-	mockModule := &mockSleeperModule{
-		wg:             &wg,
-		executionTimes: make(map[string]*app.ExecutionRecord),
-		sleepDuration:  100 * time.Millisecond,
-	}
-	testApp, _ := app.SetupAppTest(t, appConfig, mockModule)
+	completionChan := make(chan string, stepCount)
+	mockModule := testutil.NewMockSleeperModule(completionChan, 100*time.Millisecond)
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
-	if runErr != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", runErr)
-	}
-
-	wg.Wait()
+	result := testutil.RunIntegrationTest(t, files, mockModule)
+	require.NoError(t, result.Err, "test run failed unexpectedly")
 
 	// --- Assert ---
-	records := mockModule.executionTimes
+	completed := make(map[string]struct{})
+	for i := 0; i < stepCount; i++ {
+		select {
+		case id := <-completionChan:
+			completed[id] = struct{}{}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for steps to complete. Completed %d of %d steps. Got: %v", len(completed), stepCount, completed)
+		}
+	}
+
+	// Concurrency assertions
+	records := mockModule.ExecutionTimes
+	require.Len(t, records, stepCount, "expected execution records for all 4 steps")
+
 	recordB := records["B"]
 	recordC := records["C"]
 	recordD := records["D"]
 
-	// Assert that the time ranges of parallel steps overlap.
+	// Assert that the time ranges of parallel steps B and C overlap.
 	if recordB.Start.After(recordC.End) || recordC.Start.After(recordB.End) {
 		t.Errorf("steps B and C did not run in parallel")
 	}
+	// Assert that the time ranges of parallel steps C and D overlap.
 	if recordC.Start.After(recordD.End) || recordD.Start.After(recordC.End) {
 		t.Errorf("steps C and D did not run in parallel")
 	}

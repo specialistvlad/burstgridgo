@@ -1,54 +1,57 @@
-// Command burstgridgo is a declarative, concurrency-first load testing tool.
-// It executes workflows defined in HCL files by building a dependency graph
-// and running the steps concurrently, respecting all defined dependencies.
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 
 	"github.com/vk/burstgridgo/internal/app"
 	"github.com/vk/burstgridgo/internal/cli"
+	"github.com/vk/burstgridgo/internal/hcl"
 )
 
-// run is the primary, testable entrypoint for the application. It orchestrates
-// the parsing of CLI arguments and the execution of the main application logic.
-// It returns a non-nil error only if the application itself fails fatally.
-func run(ctx context.Context, args []string, outW io.Writer) error {
+// main is the entrypoint for the burstgridgo application.
+func main() {
+	// Use a minimal logger until the full one is configured.
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+
+	// The real main function handles errors and exit codes.
+	if err := run(os.Stdout, os.Args[1:]); err != nil {
+		if exitErr, ok := err.(*cli.ExitError); ok {
+			fmt.Fprintln(os.Stderr, exitErr.Message)
+			os.Exit(exitErr.Code)
+		}
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// run encapsulates the main application logic for easier testing and error handling.
+func run(outW io.Writer, args []string) error {
 	appConfig, shouldExit, err := cli.Parse(args, outW)
 	if err != nil {
-		return err // Pass the ExitError up to main
+		return err
 	}
 	if shouldExit {
 		return nil
 	}
 
-	// The main application call uses the default core modules.
-	a := app.NewApp(outW, appConfig)
-
-	if err := a.Run(ctx, appConfig); err != nil {
-		// Wrap application errors in a standard ExitError.
-		return &cli.ExitError{Code: 1, Message: err.Error()}
-	}
-	return nil
-}
-
-// main is the ultimate entrypoint for the executable. It wraps the run
-// function to handle process-level concerns like exit codes.
-func main() {
-	ctx := context.Background()
-	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
-		var exitErr *cli.ExitError
-		if errors.As(err, &exitErr) {
-			if exitErr.Message != "" {
-				fmt.Fprintln(os.Stderr, exitErr.Message)
-			}
-			os.Exit(exitErr.Code)
+	// The app panics on critical config errors, so we recover here to provide
+	// a clean exit message to the user.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(outW, "A critical startup error occurred: %v\n", r)
+			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "an unexpected error occurred: %v\n", err)
-		os.Exit(1)
-	}
+	}()
+
+	// Instantiate the concrete HCL loader to pass to the app.
+	loader := hcl.NewLoader()
+	burstgridApp := app.NewApp(outW, appConfig, loader)
+
+	return burstgridApp.Run(context.Background(), appConfig)
 }

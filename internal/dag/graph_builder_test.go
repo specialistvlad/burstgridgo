@@ -5,32 +5,37 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/hcl/v2"
+	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
 )
 
 func TestBuild_CycleDetection(t *testing.T) {
 	t.Parallel() // Mark this test as safe to run in parallel.
 
-	// Arrange: Create steps with a circular dependency (A -> B -> A).
-	// Use the full, unambiguous address for dependencies: "runner_type.instance_name".
-	stepA := &schema.Step{
+	// Arrange: Create steps with a circular dependency (A -> B -> A)
+	// using the new format-agnostic config types.
+	stepA := &config.Step{
 		Name:       "A",
 		RunnerType: "test",
-		Arguments:  &schema.StepArgs{Body: hcl.EmptyBody()},
+		Arguments:  nil, // Arguments are not needed for this test.
 		DependsOn:  []string{"test.B"},
 	}
-	stepB := &schema.Step{
+	stepB := &config.Step{
 		Name:       "B",
 		RunnerType: "test",
-		Arguments:  &schema.StepArgs{Body: hcl.EmptyBody()},
+		Arguments:  nil,
 		DependsOn:  []string{"test.A"},
 	}
-	gridConfig := &schema.GridConfig{Steps: []*schema.Step{stepA, stepB}}
 
-	// Act: Attempt to create a graph, passing a new registry.
-	_, err := Build(context.Background(), gridConfig, registry.New())
+	// Build the config.Model that dag.Build now expects.
+	model := &config.Model{
+		Grid: &config.Grid{
+			Steps: []*config.Step{stepA, stepB},
+		},
+	}
+
+	// Act: Attempt to create a graph, passing the new model.
+	_, err := Build(context.Background(), model, registry.New())
 
 	// Assert: Check that an error indicating a cycle was returned.
 	if err == nil {

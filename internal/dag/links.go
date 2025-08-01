@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/vk/burstgridgo/internal/ctxlog" // Corrected import path
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
@@ -13,27 +13,28 @@ import (
 func linkNodes(ctx context.Context, graph *Graph, r *registry.Registry) error {
 	for _, node := range graph.Nodes {
 		var dependsOn []string
-		var bodies []hcl.Body
+		var expressions []hcl.Expression
+
 		if node.Type == StepNode {
 			dependsOn = node.StepConfig.DependsOn
-			if node.StepConfig.Arguments != nil && node.StepConfig.Arguments.Body != nil {
-				bodies = append(bodies, node.StepConfig.Arguments.Body)
+			for _, expr := range node.StepConfig.Arguments {
+				expressions = append(expressions, expr)
 			}
-			if node.StepConfig.Uses != nil && node.StepConfig.Uses.Body != nil {
-				bodies = append(bodies, node.StepConfig.Uses.Body)
+			for _, expr := range node.StepConfig.Uses {
+				expressions = append(expressions, expr)
 			}
 		} else { // ResourceNode
 			dependsOn = node.ResourceConfig.DependsOn
-			if node.ResourceConfig.Arguments != nil && node.ResourceConfig.Arguments.Body != nil {
-				bodies = append(bodies, node.ResourceConfig.Arguments.Body)
+			for _, expr := range node.ResourceConfig.Arguments {
+				expressions = append(expressions, expr)
 			}
 		}
 
 		if err := linkExplicitDeps(ctx, node, dependsOn, graph); err != nil {
 			return err
 		}
-		for _, body := range bodies {
-			if err := linkImplicitDeps(ctx, node, body, graph, r); err != nil {
+		for _, expr := range expressions {
+			if err := linkImplicitDeps(ctx, node, expr, graph, r); err != nil {
 				return err
 			}
 		}
@@ -65,48 +66,42 @@ func linkExplicitDeps(ctx context.Context, node *Node, dependsOn []string, graph
 	return nil
 }
 
-// linkImplicitDeps parses a body for variable traversals to create dependency links.
-func linkImplicitDeps(ctx context.Context, node *Node, body hcl.Body, graph *Graph, r *registry.Registry) error {
+// linkImplicitDeps parses an expression for variable traversals to create dependency links.
+func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, graph *Graph, r *registry.Registry) error {
 	logger := ctxlog.FromContext(ctx)
-	attrs, diags := body.JustAttributes()
-	if diags.HasErrors() {
-		return diags
-	}
+	for _, traversal := range expr.Variables() {
+		if len(traversal) < 3 {
+			continue
+		}
+		rootName := traversal.RootName()
+		if rootName != "step" && rootName != "resource" {
+			continue
+		}
+		typeAttr, typeOk := traversal[1].(hcl.TraverseAttr)
+		nameAttr, nameOk := traversal[2].(hcl.TraverseAttr)
+		if !typeOk || !nameOk {
+			continue
+		}
+		depID := fmt.Sprintf("%s.%s.%s", rootName, typeAttr.Name, nameAttr.Name)
+		depNode, ok := graph.Nodes[depID]
+		if !ok {
+			// This could be a reference to something else, like a variable.
+			continue
+		}
 
-	for _, attr := range attrs {
-		for _, traversal := range attr.Expr.Variables() {
-			if len(traversal) < 3 {
-				continue
-			}
-			rootName := traversal.RootName()
-			if rootName != "step" && rootName != "resource" {
-				continue
-			}
-			typeAttr, typeOk := traversal[1].(hcl.TraverseAttr)
-			nameAttr, nameOk := traversal[2].(hcl.TraverseAttr)
-			if !typeOk || !nameOk {
-				continue
-			}
-			depID := fmt.Sprintf("%s.%s.%s", rootName, typeAttr.Name, nameAttr.Name)
-			depNode, ok := graph.Nodes[depID]
-			if !ok {
-				continue
-			}
-
-			// If referencing an output, validate it exists in the manifest.
-			if len(traversal) > 3 {
-				if outputAttr, isOutput := traversal[3].(hcl.TraverseAttr); isOutput && outputAttr.Name == "output" {
-					if err := validateOutputReference(traversal, depNode, r); err != nil {
-						return err
-					}
+		// If referencing an output, validate it exists in the manifest.
+		if len(traversal) > 3 {
+			if outputAttr, isOutput := traversal[3].(hcl.TraverseAttr); isOutput && outputAttr.Name == "output" {
+				if err := validateOutputReference(traversal, depNode, r); err != nil {
+					return err
 				}
 			}
+		}
 
-			if _, exists := node.Deps[depID]; !exists {
-				logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depID)
-				node.Deps[depID] = depNode
-				depNode.Dependents[node.ID] = node
-			}
+		if _, exists := node.Deps[depID]; !exists {
+			logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depID)
+			node.Deps[depID] = depNode
+			depNode.Dependents[node.ID] = node
 		}
 	}
 	return nil
@@ -129,10 +124,8 @@ func validateOutputReference(traversal hcl.Traversal, depNode *Node, r *registry
 		return fmt.Errorf("internal error: could not find definition for runner type %s", depNode.StepConfig.RunnerType)
 	}
 
-	for _, outDef := range runnerDef.Outputs {
-		if outDef.Name == outputName {
-			return nil // Found a valid declaration.
-		}
+	if _, ok := runnerDef.Outputs[outputName]; ok {
+		return nil // Found a valid declaration.
 	}
 
 	return fmt.Errorf("reference to undeclared output %q on step %q", outputName, depNode.ID)

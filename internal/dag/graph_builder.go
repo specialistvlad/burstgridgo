@@ -4,20 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
 )
 
-// Build constructs a complete, validated dependency graph from a grid configuration.
-// This is the primary entry point for the dag package.
-func Build(ctx context.Context, config *schema.GridConfig, r *registry.Registry) (*Graph, error) {
+// Build constructs a complete, validated dependency graph from a config model.
+func Build(ctx context.Context, model *config.Model, r *registry.Registry) (*Graph, error) {
 	logger := ctxlog.FromContext(ctx)
 	logger.Debug("Build: Starting graph construction.")
 	graph := &Graph{Nodes: make(map[string]*Node)}
 
 	// First pass: create all nodes for steps and resources.
-	createNodes(ctx, config, graph)
+	createNodes(ctx, model.Grid, graph)
 	logger.Debug("Build: Node creation complete.", "node_count", len(graph.Nodes))
 
 	// Second pass: link dependencies.
@@ -42,9 +41,9 @@ func Build(ctx context.Context, config *schema.GridConfig, r *registry.Registry)
 }
 
 // createNodes performs the first pass of graph creation.
-func createNodes(ctx context.Context, config *schema.GridConfig, graph *Graph) {
+func createNodes(ctx context.Context, grid *config.Grid, graph *Graph) {
 	logger := ctxlog.FromContext(ctx)
-	for _, s := range config.Steps {
+	for _, s := range grid.Steps {
 		id := fmt.Sprintf("step.%s.%s", s.RunnerType, s.Name)
 		if _, exists := graph.Nodes[id]; exists {
 			logger.Warn("Duplicate step definition found, it will be overwritten.", "id", id)
@@ -58,7 +57,7 @@ func createNodes(ctx context.Context, config *schema.GridConfig, graph *Graph) {
 			Dependents: make(map[string]*Node),
 		}
 	}
-	for _, r := range config.Resources {
+	for _, r := range grid.Resources {
 		id := fmt.Sprintf("resource.%s.%s", r.AssetType, r.Name)
 		if _, exists := graph.Nodes[id]; exists {
 			logger.Warn("Duplicate resource definition found, it will be overwritten.", "id", id)

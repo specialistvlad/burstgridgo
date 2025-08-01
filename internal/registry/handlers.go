@@ -8,9 +8,10 @@ import (
 
 // RegisteredRunner holds the compiled Go parts of a runner's lifecycle function.
 type RegisteredRunner struct {
-	NewInput func() any
-	NewDeps  func() any
-	Fn       any
+	NewInput  func() any
+	InputType reflect.Type // The reflect.Type of the pure Go input struct.
+	NewDeps   func() any
+	Fn        any
 }
 
 // RegisterRunner registers a Go function for a runner's lifecycle event.

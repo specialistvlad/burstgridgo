@@ -1,17 +1,18 @@
 package integration_tests
 
 import (
-	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// Test for: invalid hcl is rejected
+// TestErrorHandling_InvalidHCL_IsRejected validates that the application panics
+// on startup if HCL configuration is syntactically invalid.
 func TestErrorHandling_InvalidHCL_IsRejected(t *testing.T) {
+	t.Parallel()
+
 	// --- Arrange ---
 	// Define an HCL string with a clear syntax error (a missing closing brace).
 	invalidHCL := `
@@ -19,30 +20,22 @@ func TestErrorHandling_InvalidHCL_IsRejected(t *testing.T) {
 			arguments {
 		// Missing closing brace here
 	`
-	tempDir := t.TempDir()
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(invalidHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"main.hcl": invalidHCL,
 	}
-
-	// For this test, we don't need any real modules since the failure should
-	// happen during parsing, long before any handlers are invoked.
-	appConfig := &app.AppConfig{GridPath: gridPath}
-	testApp, _ := app.SetupAppTest(t, appConfig)
 
 	// --- Act ---
-	// Run the application. We expect an error during the config loading phase.
-	runErr := testApp.Run(context.Background(), appConfig)
+	// The test harness will catch the panic during app.NewApp and return it as an error.
+	// No modules are needed since the failure happens before they are used.
+	result := testutil.RunIntegrationTest(t, files)
 
 	// --- Assert ---
-	if runErr == nil {
-		t.Fatal("app.Run() should have returned an error for invalid HCL, but it returned nil")
-	}
+	require.Error(t, result.Err, "The app should have panicked on invalid HCL, but it did not.")
 
-	// Check for keywords that indicate a parsing or decoding error, which
-	// confirms the failure happened at the expected stage.
-	errMsg := runErr.Error()
-	if !strings.Contains(errMsg, "failed to parse") && !strings.Contains(errMsg, "failed to decode") {
-		t.Errorf("expected error message to indicate an HCL parsing failure, but got: %s", errMsg)
-	}
+	// Check the error message to ensure it's the one we expect.
+	errStr := result.Err.Error()
+	isExpectedError := strings.Contains(errStr, "application startup panicked") &&
+		(strings.Contains(errStr, "failed to parse") || strings.Contains(errStr, "failed to decode"))
+
+	require.True(t, isExpectedError, "Expected panic message to indicate a parsing failure, but got: %v", result.Err)
 }

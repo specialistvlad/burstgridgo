@@ -7,5 +7,8 @@ step "socketio" "ping_pong" {
     on_event             = "pong"
     timeout              = "5s"
     insecure_skip_verify = true
+    emit_data = {
+      message = "Hello, World!"
+    }
   }
 }

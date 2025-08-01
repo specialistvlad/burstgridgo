@@ -3,101 +3,78 @@ package integration_tests
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// mockSleeperModule contains the logic for a runner that can sleep.
-// It now only registers the Go handler.
-type mockSleeperModule struct{}
-
-// sleeperInput defines the arguments for our mock runner.
-type sleeperInput struct {
-	Duration string `hcl:"duration"`
-}
-
-// Register registers the "sleeper" runner's Go handler.
-func (m *mockSleeperModule) Register(r *registry.Registry) {
-	r.RegisterRunner("OnRunSleeper", &registry.RegisteredRunner{
-		NewInput: func() any { return new(sleeperInput) },
-		NewDeps:  func() any { return new(struct{}) },
-		Fn: func(ctx context.Context, deps any, input any) (cty.Value, error) {
-			duration, err := time.ParseDuration(input.(*sleeperInput).Duration)
-			if err != nil {
-				return cty.NilVal, err
-			}
-
-			select {
-			case <-time.After(duration):
-				return cty.NilVal, nil // Should not be hit.
-			case <-ctx.Done():
-				return cty.NilVal, ctx.Err() // Will be hit.
-			}
-		},
-	})
-}
-
-// Test for: step timeout fails run
+// TestErrorHandling_StepTimeout_FailsRun validates that a step is cancelled
+// by the context if it runs for too long.
 func TestErrorHandling_StepTimeout_FailsRun(t *testing.T) {
-	// --- Arrange ---
-	tempDir := t.TempDir()
+	t.Parallel()
 
-	// 1. Define and write the HCL manifest for the "sleeper" runner.
+	// --- Arrange ---
 	manifestHCL := `
 		runner "sleeper" {
-			lifecycle { on_run = "OnRunSleeper" }
+			lifecycle {
+				on_run = "OnRunSleeper"
+			}
 			input "duration" {
 				type = string
 			}
 		}
 	`
-	moduleDir := filepath.Join(tempDir, "modules", "sleeper")
-	if err := os.MkdirAll(moduleDir, 0755); err != nil {
-		t.Fatalf("failed to create module directory: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(moduleDir, "manifest.hcl"), []byte(manifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write manifest: %v", err)
-	}
-
-	// 2. Define a grid with a step that will sleep longer than the context timeout.
 	gridHCL := `
 		step "sleeper" "A" {
 			arguments {
-				duration = "1s"
+				duration = "1s" // This is longer than the context timeout.
 			}
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"modules/sleeper/manifest.hcl": manifestHCL,
+		"main.hcl":                     gridHCL,
 	}
 
-	// 3. Configure the app for module discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
+	type sleeperInput struct {
+		Duration string `bggo:"duration"`
 	}
-	testApp, _ := app.SetupAppTest(t, appConfig, &mockSleeperModule{})
 
-	// Create a context with a very short timeout (50ms).
+	mockModule := &testutil.SimpleModule{
+		RunnerName: "OnRunSleeper",
+		Runner: &registry.RegisteredRunner{
+			NewInput:  func() any { return new(sleeperInput) },
+			InputType: reflect.TypeOf(sleeperInput{}),
+			NewDeps:   func() any { return new(struct{}) },
+			Fn: func(ctx context.Context, deps any, input any) (any, error) {
+				in := input.(*sleeperInput)
+				duration, err := time.ParseDuration(in.Duration)
+				if err != nil {
+					return nil, err
+				}
+
+				select {
+				case <-time.After(duration):
+					return nil, errors.New("step sleep was not canceled by context")
+				case <-ctx.Done():
+					return nil, ctx.Err() // This should return context.DeadlineExceeded
+				}
+			},
+		},
+	}
+
+	// --- Act ---
+	// Create a context with a very short timeout to trigger the failure condition.
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	// --- Act ---
-	runErr := testApp.Run(ctx, appConfig)
+	result := testutil.RunIntegrationTestWithContext(ctx, t, files, mockModule)
 
 	// --- Assert ---
-	if runErr == nil {
-		t.Fatal("app.Run() should have returned a timeout error, but it returned nil")
-	}
-
-	if !errors.Is(runErr, context.DeadlineExceeded) {
-		t.Errorf("expected the error chain to contain context.DeadlineExceeded, but it did not. Got: %v", runErr)
-	}
+	require.Error(t, result.Err, "app.Run() should have returned a timeout error, but it returned nil")
+	require.ErrorIs(t, result.Err, context.DeadlineExceeded, "the error chain should contain context.DeadlineExceeded")
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/dag"
 )
@@ -34,12 +33,13 @@ func (e *Executor) runResourceNode(ctx context.Context, node *dag.Node) error {
 		return fmt.Errorf("destroy handler '%s' not registered", destroyHandlerName)
 	}
 
-	logger.Debug("Decoding resource arguments.")
+	// Use the robust decoding logic via the converter interface.
 	inputStruct := assetHandler.NewInput()
-	evalCtx := e.buildEvalContext(ctx, node)
-	if node.ResourceConfig.Arguments != nil {
-		if diags := gohcl.DecodeBody(node.ResourceConfig.Arguments.Body, evalCtx, inputStruct); diags.HasErrors() {
-			return diags
+	if inputStruct != nil {
+		evalCtx := e.buildEvalContext(ctx, node)
+		err := e.converter.DecodeBody(ctx, inputStruct, node.ResourceConfig.Arguments, assetDef.Inputs, evalCtx)
+		if err != nil {
+			return fmt.Errorf("failed to decode arguments for resource %s: %w", node.ID, err)
 		}
 	}
 

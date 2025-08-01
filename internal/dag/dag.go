@@ -4,7 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/vk/burstgridgo/internal/schema"
+	"github.com/vk/burstgridgo/internal/config"
 )
 
 // --- Public Structs ---
@@ -16,11 +16,12 @@ type Graph struct {
 
 // Node is a single node in the execution graph.
 type Node struct {
-	ID             string // Unique ID, e.g., "step.http_request.my_step"
-	Name           string // The instance name from HCL
-	Type           NodeType
-	StepConfig     *schema.Step
-	ResourceConfig *schema.Resource
+	ID   string // Unique ID, e.g., "step.http_request.my_step"
+	Name string // The instance name from HCL
+	Type NodeType
+	// Configuration is now from the format-agnostic model.
+	StepConfig     *config.Step
+	ResourceConfig *config.Resource
 	Deps           map[string]*Node
 	Dependents     map[string]*Node
 	Error          error

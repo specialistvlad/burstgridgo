@@ -2,35 +2,20 @@ package integration_tests
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"strings"
+	"reflect"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// mockPrintModuleForCLI now only registers the Go handler for the "print" runner.
-type mockPrintModuleForCLI struct{}
-
-// Register provides a mock implementation of the "OnRunPrint" handler.
-func (m *mockPrintModuleForCLI) Register(r *registry.Registry) {
-	r.RegisterRunner("OnRunPrint", &registry.RegisteredRunner{
-		NewInput: func() any { return new(schema.StepArgs) },
-		NewDeps:  func() any { return new(struct{}) },
-		Fn:       func(context.Context, any, any) (cty.Value, error) { return cty.NilVal, nil },
-	})
-}
-
-// Test for: config merges
+// TestCLI_MergesHCL_FromDirectoryPath validates that the loader correctly
+// discovers and merges all HCL files from a given directory path.
 func TestCLI_MergesHCL_FromDirectoryPath(t *testing.T) {
-	// --- Arrange ---
-	tempDir := t.TempDir()
+	t.Parallel()
 
-	// 1. Define and write the HCL manifest for the "print" runner.
+	// --- Arrange ---
 	manifestHCL := `
 		runner "print" {
 			lifecycle {
@@ -38,59 +23,43 @@ func TestCLI_MergesHCL_FromDirectoryPath(t *testing.T) {
 			}
 		}
 	`
-	moduleDir := filepath.Join(tempDir, "modules", "print")
-	if err := os.MkdirAll(moduleDir, 0755); err != nil {
-		t.Fatalf("failed to create module directory: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(moduleDir, "manifest.hcl"), []byte(manifestHCL), 0600); err != nil {
-		t.Fatalf("failed to write manifest: %v", err)
-	}
-
-	// 2. Create multiple grid files in a single directory.
-	gridDir := filepath.Join(tempDir, "grids")
-	if err := os.MkdirAll(gridDir, 0755); err != nil {
-		t.Fatalf("failed to create grid directory: %v", err)
-	}
-
 	hclFileA := `
 		step "print" "step_A" {
 			arguments {}
 		}
 	`
-
 	hclFileB := `
 		step "print" "step_B" {
 			arguments {}
 		}
 	`
+	// The harness will create these in the same directory structure.
+	files := map[string]string{
+		"modules/print/manifest.hcl": manifestHCL,
+		"grids/a.hcl":                hclFileA,
+		"grids/b.hcl":                hclFileB,
+	}
 
-	if err := os.WriteFile(filepath.Join(gridDir, "a.hcl"), []byte(hclFileA), 0600); err != nil {
-		t.Fatalf("failed to write hcl file a: %v", err)
+	mockModule := &testutil.SimpleModule{
+		RunnerName: "OnRunPrint",
+		Runner: &registry.RegisteredRunner{
+			NewInput:  func() any { return new(struct{}) },
+			InputType: reflect.TypeOf(struct{}{}),
+			NewDeps:   func() any { return new(struct{}) },
+			Fn:        func(context.Context, any, any) (any, error) { return nil, nil },
+		},
 	}
-	if err := os.WriteFile(filepath.Join(gridDir, "b.hcl"), []byte(hclFileB), 0600); err != nil {
-		t.Fatalf("failed to write hcl file b: %v", err)
-	}
-
-	// 3. Configure the app to load from the grid directory and discover from the modules directory.
-	appConfig := &app.AppConfig{
-		GridPath:    gridDir,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-	}
-	testApp, logBuffer := app.SetupAppTest(t, appConfig, &mockPrintModuleForCLI{})
 
 	// --- Act ---
-	err := testApp.Run(context.Background(), appConfig)
+	// The harness configures the app to load from the root temporary
+	// directory, discovering the module manifest and all grid files.
+	result := testutil.RunIntegrationTest(t, files, mockModule)
 
 	// --- Assert ---
-	if err != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", err)
-	}
-	logOutput := logBuffer.String()
+	require.NoError(t, result.Err, "app.Run() returned an unexpected error")
+	logOutput := result.LogOutput
 
-	if !strings.Contains(logOutput, "step=step.print.step_A") {
-		t.Errorf("Expected log output for step_A, but it was not found in logs")
-	}
-	if !strings.Contains(logOutput, "step=step.print.step_B") {
-		t.Errorf("Expected log output for step_B, but it was not found in logs")
-	}
+	// Check that both steps, from both files, were executed.
+	require.Contains(t, logOutput, "step=step.print.step_A", "Expected log output for step_A was not found")
+	require.Contains(t, logOutput, "step=step.print.step_B", "Expected log output for step_B was not found")
 }

@@ -12,24 +12,16 @@ import (
 
 // Run executes the main application logic based on the provided configuration.
 func (a *App) Run(ctx context.Context, appConfig *AppConfig) error {
-	// Create a new context that carries the application-specific logger.
 	ctx = ctxlog.WithLogger(ctx, a.logger)
 	a.logger.Debug("App.Run method started.")
 
 	if appConfig.HealthcheckPort > 0 {
-		a.logger.Debug("Health check server configured.", "port", appConfig.HealthcheckPort)
 		go a.startHealthcheckServer(appConfig.HealthcheckPort)
 	}
 
-	a.logger.Debug("Loading grid configuration.", "path", appConfig.GridPath)
-	gridConfig, err := LoadGridConfig(ctx, appConfig.GridPath)
-	if err != nil {
-		return fmt.Errorf("failed to load grid configuration: %w", err)
-	}
-	a.logger.Debug("Grid configuration loaded successfully.")
-
-	a.logger.Debug("Building dependency graph...")
-	graph, err := dag.Build(ctx, gridConfig, a.registry)
+	a.logger.Debug("Building dependency graph from config model...")
+	// Pass the pre-loaded, format-agnostic config model to the DAG builder.
+	graph, err := dag.Build(ctx, a.config, a.registry)
 	if err != nil {
 		return fmt.Errorf("failed to build dependency graph: %w", err)
 	}
@@ -41,7 +33,7 @@ func (a *App) Run(ctx context.Context, appConfig *AppConfig) error {
 	if len(graph.Nodes) > 0 {
 		a.logger.Debug("Executor starting run.")
 		a.logger.Info("🚀 Starting concurrent execution...")
-		exec := executor.New(graph, appConfig.WorkerCount, a.registry)
+		exec := executor.New(graph, appConfig.WorkerCount, a.registry, a.converter)
 		if err := exec.Run(ctx); err != nil {
 			return fmt.Errorf("execution failed: %w", err)
 		}

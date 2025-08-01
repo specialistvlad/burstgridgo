@@ -2,16 +2,14 @@ package integration_tests
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/testutil"
 )
 
 // --- Test-Specific Mocks for Cleanup Test ---
@@ -20,18 +18,16 @@ type eventRecord struct {
 	Timestamp time.Time
 }
 
-// mockCleanupSpyModule only registers the Go handlers for the asset and runner.
 type mockCleanupSpyModule struct {
-	wg        *sync.WaitGroup
-	events    *sync.Map
-	stepTimes *sync.Map
+	events         *sync.Map
+	stepTimes      *sync.Map
+	completionChan chan<- string
 }
 
-// Register registers the "spy_resource" and "reporter" Go handlers.
 func (m *mockCleanupSpyModule) Register(r *registry.Registry) {
 	// --- "spy_resource" Asset: Go Handlers ---
 	r.RegisterAssetHandler("CreateSpyResource", &registry.RegisteredAsset{
-		NewInput: func() any { return new(schema.StepArgs) },
+		NewInput: func() any { return new(struct{}) },
 		CreateFn: func(context.Context, any) (any, error) {
 			m.events.Store("Create", &eventRecord{Timestamp: time.Now()})
 			return "spy_instance", nil
@@ -46,32 +42,35 @@ func (m *mockCleanupSpyModule) Register(r *registry.Registry) {
 
 	// --- "reporter" Runner: Go Handler ---
 	type reporterDeps struct {
-		R any `hcl:"r,optional"`
+		R any `bggo:"r,optional"`
 	}
 	type reporterInput struct {
-		Name string `hcl:"name"`
+		Name string `bggo:"name"`
 	}
 	r.RegisterRunner("OnRunReporter", &registry.RegisteredRunner{
-		NewInput: func() any { return new(reporterInput) },
-		NewDeps:  func() any { return new(reporterDeps) },
-		Fn: func(_ context.Context, _ any, inputRaw any) (cty.Value, error) {
-			defer m.wg.Done()
+		NewInput:  func() any { return new(reporterInput) },
+		InputType: reflect.TypeOf(reporterInput{}), // This line was missing
+		NewDeps:   func() any { return new(reporterDeps) },
+		Fn: func(_ context.Context, _ any, inputRaw any) (any, error) {
 			input := inputRaw.(*reporterInput)
 			startTime := time.Now()
 			time.Sleep(50 * time.Millisecond)
 			endTime := time.Now()
-			m.stepTimes.Store(input.Name, &app.ExecutionRecord{Start: startTime, End: endTime})
-			return cty.NilVal, nil
+			m.stepTimes.Store(input.Name, &testutil.ExecutionRecord{Start: startTime, End: endTime})
+			if m.completionChan != nil {
+				m.completionChan <- input.Name
+			}
+			return nil, nil
 		},
 	})
 }
 
-// Test for: Resource is cleaned up efficiently.
+// TestCoreExecution_ResourceEfficientCleanup validates that a resource is destroyed
+// as soon as it's no longer needed by any downstream steps.
 func TestCoreExecution_ResourceEfficientCleanup(t *testing.T) {
+	t.Parallel()
 	// --- Arrange ---
-	tempDir := t.TempDir()
-
-	// 1. Define and write HCL manifests for the asset and runner.
+	const stepCount = 2
 	assetManifest := `
 		asset "spy_resource" {
 			lifecycle {
@@ -82,92 +81,72 @@ func TestCoreExecution_ResourceEfficientCleanup(t *testing.T) {
 	`
 	runnerManifest := `
 		runner "reporter" {
-			lifecycle { on_run = "OnRunReporter" }
+			lifecycle {
+				on_run = "OnRunReporter"
+			}
 			uses "r" {
 				asset_type = "spy_resource"
-				# This 'uses' is optional in the manifest if the Go struct tag is ',optional'
 			}
 			input "name" {
 				type = string
 			}
 		}
 	`
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "spy_resource"), 0755); err != nil {
-		t.Fatalf("failed to create asset module dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(tempDir, "modules", "reporter"), 0755); err != nil {
-		t.Fatalf("failed to create runner module dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/spy_resource/manifest.hcl"), []byte(assetManifest), 0600); err != nil {
-		t.Fatalf("failed to write asset manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "modules/reporter/manifest.hcl"), []byte(runnerManifest), 0600); err != nil {
-		t.Fatalf("failed to write runner manifest: %v", err)
-	}
-
-	// 2. The user's grid file.
 	gridHCL := `
 		resource "spy_resource" "R" {}
 
 		step "reporter" "A" {
-			uses { r = resource.spy_resource.R }
-			arguments { name = "A" }
+			uses {
+				r = resource.spy_resource.R
+			}
+			arguments {
+				name = "A"
+			}
 		}
 
 		step "reporter" "B" {
 			depends_on = ["reporter.A"]
-			arguments { name = "B" }
+			arguments {
+				name = "B"
+			}
 		}
 	`
-	gridPath := filepath.Join(tempDir, "main.hcl")
-	if err := os.WriteFile(gridPath, []byte(gridHCL), 0600); err != nil {
-		t.Fatalf("failed to write hcl file: %v", err)
+	files := map[string]string{
+		"modules/spy_resource/manifest.hcl": assetManifest,
+		"modules/reporter/manifest.hcl":     runnerManifest,
+		"main.hcl":                          gridHCL,
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	// 3. Configure the app for discovery.
-	appConfig := &app.AppConfig{
-		GridPath:    gridPath,
-		ModulesPath: filepath.Join(tempDir, "modules"),
-	}
+	completionChan := make(chan string, stepCount)
 	mockModule := &mockCleanupSpyModule{
-		wg:        &wg,
-		events:    new(sync.Map),
-		stepTimes: new(sync.Map),
+		events:         new(sync.Map),
+		stepTimes:      new(sync.Map),
+		completionChan: completionChan,
 	}
-	testApp, _ := app.SetupAppTest(t, appConfig, mockModule)
 
 	// --- Act ---
-	runErr := testApp.Run(context.Background(), appConfig)
-	if runErr != nil {
-		t.Fatalf("app.Run() returned an unexpected error: %v", runErr)
-	}
-
-	wg.Wait()
-	time.Sleep(20 * time.Millisecond)
+	result := testutil.RunIntegrationTest(t, files, mockModule)
+	require.NoError(t, result.Err, "test run failed unexpectedly")
 
 	// --- Assert ---
-	destroyEvent, ok := mockModule.events.Load("Destroy")
-	if !ok {
-		t.Fatal("Resource was never destroyed")
+	// Wait for steps to complete using the channel
+	completed := make(map[string]struct{})
+	for i := 0; i < stepCount; i++ {
+		select {
+		case id := <-completionChan:
+			completed[id] = struct{}{}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out waiting for steps to complete. Completed %d of %d steps. Got: %v", len(completed), stepCount, completed)
+		}
 	}
+
+	destroyEvent, ok := mockModule.events.Load("Destroy")
+	require.True(t, ok, "Resource was never destroyed")
 	destroyTime := destroyEvent.(*eventRecord).Timestamp
 
 	stepBRecord, ok := mockModule.stepTimes.Load("B")
-	if !ok {
-		t.Fatal("Step B never recorded its execution time")
-	}
-	stepB := stepBRecord.(*app.ExecutionRecord)
+	require.True(t, ok, "Step B never recorded its execution time")
+	stepB := stepBRecord.(*testutil.ExecutionRecord)
 
-	if !destroyTime.Before(stepB.End) {
-		t.Errorf("BUG REMAINS: Resource was not destroyed efficiently.")
-		t.Logf("  Step B End Time:  %v", stepB.End.UnixNano())
-		t.Logf("  Destroy Time:     %v", destroyTime.UnixNano())
-	} else {
-		t.Logf("FIX CONFIRMED: Resource was destroyed efficiently before step B finished.")
-		t.Logf("  Destroy Time:     %v", destroyTime.UnixNano())
-		t.Logf("  Step B End Time:  %v", stepB.End.UnixNano())
-	}
+	require.True(t, destroyTime.Before(stepB.End), "Resource was not destroyed efficiently before step B finished")
 }
