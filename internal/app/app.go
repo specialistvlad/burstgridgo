@@ -69,7 +69,7 @@ func NewApp(outW io.Writer, appConfig *AppConfig, loader config.Loader, modules 
 	logger.Debug("Registry definitions populated from config model.")
 
 	// Validate the integrity of the registry.
-	if err := reg.ValidateRegistry(); err != nil {
+	if err := reg.ValidateRegistry(ctx); err != nil {
 		// This is a programmer error (mismatch between code and config), so we panic.
 		panic(err)
 	}

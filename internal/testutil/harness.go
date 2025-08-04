@@ -85,6 +85,9 @@ func RunIntegrationTestWithContext(ctx context.Context, t *testing.T, files map[
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
+				if os.Getenv("BGGO_TEST_LOGS") == "true" {
+					t.Logf("--- HARNESS RECOVERED PANIC ---\n%q", fmt.Sprintf("%v", r))
+				}
 				panicErr = r
 			}
 		}()
