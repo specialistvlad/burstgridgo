@@ -42,3 +42,37 @@ func TestRun_PanicRecovery(t *testing.T) {
 	require.True(t, strings.Contains(errStr, "application startup panicked"), "The error message should indicate that a panic was recovered.")
 	require.True(t, strings.Contains(errStr, "failed to parse"), "The error message should contain the underlying reason for the panic.")
 }
+
+func TestRun_ShouldExit(t *testing.T) {
+	t.Parallel()
+
+	// --- Arrange ---
+	// The "-h" (help) flag should cause cli.Parse to return `shouldExit=true`.
+	args := []string{"-h"}
+	out := &bytes.Buffer{}
+
+	// --- Act ---
+	// The run function should see `shouldExit=true` and return a nil error.
+	err := run(out, args)
+
+	// --- Assert ---
+	require.NoError(t, err, "run() should return a nil error when shouldExit is true")
+	require.Contains(t, out.String(), "Usage:", "Expected help text to be printed to the output buffer")
+}
+
+func TestRun_ParseError(t *testing.T) {
+	t.Parallel()
+
+	// --- Arrange ---
+	// Providing an unknown flag will cause cli.Parse to return an error.
+	args := []string{"--this-is-not-a-valid-flag"}
+	out := &bytes.Buffer{}
+
+	// --- Act ---
+	// The run function should propagate the error from cli.Parse.
+	err := run(out, args)
+
+	// --- Assert ---
+	require.Error(t, err, "run() should return an error when argument parsing fails")
+	require.Contains(t, err.Error(), "flag provided but not defined: -this-is-not-a-valid-flag")
+}
