@@ -1,19 +1,21 @@
 package registry
 
 import (
+	"context"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"strings"
 
+	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 // ValidateRegistry performs a strict parity check between manifests and Go code.
 // It checks both the presence of inputs and the compatibility of their types.
-func (r *Registry) ValidateRegistry() error {
+func (r *Registry) ValidateRegistry(ctx context.Context) error {
 	var errs []string
+	logger := ctxlog.FromContext(ctx)
 
 	for runnerType, def := range r.DefinitionRegistry {
 		handler, ok := r.HandlerRegistry[def.Lifecycle.OnRun]
@@ -68,7 +70,7 @@ func (r *Registry) ValidateRegistry() error {
 
 			manifestType := inputDef.Type
 			if manifestType.Equals(cty.DynamicPseudoType) {
-				slog.Warn("Manifest for runner has input with 'type = any', which disables static type checking. Consider using a specific type like 'string', 'number', or 'bool'.", "runner", runnerType, "input", name)
+				logger.Warn("Manifest for runner has input with 'type = any', which disables static type checking. Consider using a specific type like 'string', 'number', or 'bool'.", "runner", runnerType, "input", name)
 				continue
 			}
 

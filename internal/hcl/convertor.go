@@ -54,6 +54,8 @@ func (c *Converter) DecodeBody(
 			lookupName = strings.Split(tag, ",")[0]
 		}
 
+		fieldLogger := logger.With("go_field", field.Name, "hcl_input", lookupName)
+
 		inputDef, defExists := defs[lookupName]
 		if !defExists {
 			continue
@@ -71,39 +73,46 @@ func (c *Converter) DecodeBody(
 				return diags
 			}
 			valueToDecode = val
-			valueSource = "user-provided argument"
+			valueSource = "user-provided"
+			fieldLogger.Debug("Received value from user.", "value_source", valueSource, "raw_value", val.GoString(), "raw_type", val.Type().FriendlyName())
 		} else {
 			if inputDef.Default == nil && !inputDef.Optional {
 				return fmt.Errorf("missing required argument %q", lookupName)
 			}
 			if inputDef.Default != nil {
 				valueToDecode = *inputDef.Default
-				valueSource = "default value"
+				valueSource = "default"
+				fieldLogger.Debug("Applying default value.", "value_source", valueSource, "default_value", valueToDecode.GoString(), "default_type", valueToDecode.Type().FriendlyName())
 			} else {
-				continue // Optional field with no default and no value provided
+				fieldLogger.Debug("Optional field not provided and no default exists. Skipping.")
+				continue
 			}
 		}
 
 		// Perform type conversion based on the manifest's definition.
-		// This is the core of ADR-009's runtime enforcement.
 		manifestType := inputDef.Type
+		fieldLogger.Debug("Starting conversion based on manifest type.", "manifest_type", manifestType.FriendlyName())
 		if !manifestType.Equals(cty.DynamicPseudoType) {
 			var err error
-			valueToDecode, err = convert.Convert(valueToDecode, manifestType)
+			convertedValue, err := convert.Convert(valueToDecode, manifestType)
 			if err != nil {
-				return fmt.Errorf("failed to convert %s for argument '%s': %w", valueSource, lookupName, err)
+				return fmt.Errorf("failed to convert %s value for argument '%s': %w", valueSource, lookupName, err)
 			}
+			if !convertedValue.Type().Equals(valueToDecode.Type()) {
+				fieldLogger.Debug("Value was converted to match manifest type.", "from_type", valueToDecode.Type().FriendlyName(), "to_type", convertedValue.Type().FriendlyName(), "new_value", convertedValue.GoString())
+			}
+			valueToDecode = convertedValue
 		}
 
 		if err := c.decode(ctx, valueToDecode, targetPtr); err != nil {
-			return fmt.Errorf("failed to decode argument '%s': %w", lookupName, err)
+			return fmt.Errorf("failed to decode argument '%s' into Go struct field: %w", lookupName, err)
 		}
 	}
 	logger.Debug("Finished HCL body decoding successfully.")
 	return nil
 }
 
-// decode handles the conversion and decoding of a cty.Value into a Go pointer.
+// decode handles the final conversion and decoding of a cty.Value into a Go pointer.
 func (c *Converter) decode(ctx context.Context, val cty.Value, goVal any) error {
 	logger := ctxlog.FromContext(ctx)
 	valPtr := reflect.ValueOf(goVal)
@@ -111,32 +120,29 @@ func (c *Converter) decode(ctx context.Context, val cty.Value, goVal any) error 
 		return fmt.Errorf("target for decoding must be a pointer, got %T", goVal)
 	}
 
-	// In ADR-009, the initial conversion now happens in DecodeBody. This function
-	// still needs to handle final conversion to the specific Go type if it differs
-	// from the general cty.Type (e.g. cty.Number to int64).
+	goType := valPtr.Elem().Type()
+	decodeLogger := logger.With("target_go_type", goType.String())
+
 	impliedType, err := gocty.ImpliedType(valPtr.Elem().Interface())
 	if err != nil {
-		logger.Debug("Could not imply cty.Type from Go type, attempting direct decoding.", "go_type", valPtr.Elem().Type().String(), "error", err)
+		decodeLogger.Debug("Could not imply cty.Type from Go type, attempting direct unsafe decoding.", "error", err)
 		return gocty.FromCtyValue(val, goVal)
 	}
-
-	logger.Debug("Preparing to decode value.",
-		"source_type", val.Type().FriendlyName(),
-		"target_type", impliedType.FriendlyName(),
-	)
+	decodeLogger.Debug("Implied cty.Type from Go type.", "implied_cty_type", impliedType.FriendlyName())
 
 	convertedVal, err := convert.Convert(val, impliedType)
 	if err != nil {
-		return fmt.Errorf("cannot convert %s to required type %s: %w", val.Type().FriendlyName(), impliedType.FriendlyName(), err)
+		return fmt.Errorf("cannot convert value of type %s to required Go type %s (cty type %s): %w", val.Type().FriendlyName(), goType.String(), impliedType.FriendlyName(), err)
 	}
 
 	if !val.Type().Equals(convertedVal.Type()) {
-		logger.Debug("Implicitly converted value type.",
-			"from", val.Type().FriendlyName(),
-			"to", convertedVal.Type().FriendlyName(),
+		decodeLogger.Debug("Value was converted to match final Go type.",
+			"from_type", val.Type().FriendlyName(),
+			"to_type", convertedVal.Type().FriendlyName(),
 		)
 	}
 
+	decodeLogger.Debug("Final value decoding into Go struct.")
 	return gocty.FromCtyValue(convertedVal, goVal)
 }
 

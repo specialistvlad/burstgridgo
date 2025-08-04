@@ -65,11 +65,17 @@ func (l *Loader) Load(ctx context.Context, paths ...string) (*config.Model, conf
 
 		// Translate and merge all discovered blocks into the model.
 		for _, runner := range root.Runners {
-			def := l.translateRunnerDefinition(ctx, runner)
+			def, err := l.translateRunnerDefinition(ctx, runner)
+			if err != nil {
+				return nil, nil, err
+			}
 			model.Runners[def.Type] = def
 		}
 		for _, asset := range root.Assets {
-			def := l.translateAssetDefinition(ctx, asset)
+			def, err := l.translateAssetDefinition(ctx, asset)
+			if err != nil {
+				return nil, nil, err
+			}
 			model.Assets[def.Type] = def
 		}
 		for _, step := range root.Steps {
