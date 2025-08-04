@@ -1,6 +1,6 @@
 # ADR-008: Decoupling Modules to Pure Go
 
-**Status:** Verification
+**Status:** Implemented
 **Date:** 2025-07-30
 **Depends On:** ADR-007
 

@@ -1,47 +1,59 @@
-# ADR-009: Advanced Declarative Engine Features
+# ADR-009: Primitive Type System
 
-**Status:** Draft
-**Date:** 2025-07-30
+**Status:** Proposed
+**Date:** 2025-08-04
 **Depends On:** ADR-008
 
 ---
 
 ## Context and Problem Statement
 
-Following ADR-008, modules are now pure Go, but the engine's capabilities are still basic. It lacks a rich type system for handling complex but common types (e.g., regular expressions). It also cannot enforce declarative validation rules, apply default values, or handle sensitive data based on the manifest definitions, placing this burden on module authors.
+Following ADR-008, modules now have a "pure Go" contract. However, the engine does not yet enforce the data types declared in a module's manifest. For example, if a manifest declares an input `type = number`, the engine will still attempt to coerce that value into a `string` if the backing Go struct field is a string. This type coercion is driven by the Go implementation, not the manifest's explicit contract.
+
+This creates a disconnect where the manifest is not the single source of truth. To build a robust and reliable system, the engine must be able to validate that user-provided configuration values adhere to the type contract defined in the manifest.
+
+While a basic mechanism for handling `default` values currently exists within the HCL-specific translation layer, a formal type system is the necessary foundation to make defaults, validation, and other declarative features truly format-agnostic.
+
+This ADR addresses the first, most fundamental step: implementing a primitive type system.
 
 ---
 
 ## Decision Drivers
 
-* **Rich, Validated Core Types:** The engine should support custom types (e.g., `regex`) and declarative validation rules defined in manifests.
-* **Declarative Defaults:** Support optional arguments via `default` values defined in the manifest, simplifying module logic.
-* **Security:** The engine should be able to handle `sensitive` data and prevent it from being logged.
-* **Improved Developer Experience:** Module authors should be able to define their entire contract, including validation, declaratively.
+* **Module Contract Integrity:** The manifest must be the single source of truth. The engine must enforce the types it declares.
+* **Improved User Experience:** Users should receive clear, early, and actionable error messages if they provide a value of the wrong type (e.g., `"hello"` for a `number` input).
+* **Foundation for Future Features:** A strong type system is the prerequisite for `ADR-010` (Collection Types), `ADR-011` (Structural Types), and future declarative validation features.
+* **Incremental Delivery:** We have explicitly chosen to implement only primitive types first to reduce risk, manage complexity, and deliver a foundational improvement quickly.
 
 ---
 
 ## Decision Outcome
 
-We will enhance the `executor` and introduce a **Core Type System**, making the engine aware of the rich semantics defined in module manifests.
+We will enhance the configuration loader and converter to formally support and enforce primitive types, and we will add a strict type parity check at startup.
 
-1.  **Core Type System:**
-    * An internal `TypeRegistry` will be created to map type names from manifests (e.g., `"string"`, `"regex"`) to their corresponding Go types.
-    * Core internal types (e.g., `types.Regexp`) will implement standard Go interfaces like `encoding.TextUnmarshaler` to provide automatic validation and conversion.
+1.  **Scope:** The scope of this ADR is limited to the following types declared in manifests:
+    * `string`
+    * `number`
+    * `bool`
+    * `any` (will continue to be supported as an escape hatch)
 
-2.  **Manifest-Aware Executor:** The `executor`'s step-processing pipeline will be expanded to:
-    * Apply any `default` values for arguments the user did not provide.
-    * Run any declarative `validation` blocks defined in the manifest.
-    * Call an optional Go `Validate` function provided by the module.
-    * Redact any values from `sensitive` inputs in its logging.
+2.  **Startup Type Parity Check (`registry/validate.go`):** The `ValidateRegistry` function will be enhanced to perform a strict type compatibility check at application startup. For each module input:
+    * It will parse the `cty.Type` from the manifest's `type` attribute.
+    * It will find the corresponding Go struct field via its `bggo` tag and infer that field's native `cty.Type`.
+    * **Rule:** If the manifest specifies a primitive type (`string`, `number`, `bool`), the inferred Go type must be strictly compatible. If not, the application will **fail to start** with a clear error detailing the mismatch.
+    * **Rule:** If the manifest specifies `type = any`, the engine will permit any compatible Go type for the tagged field but will **log a warning**, encouraging the author to use a more specific type.
 
-3.  **Final Handler Call:** Only after all checks pass will the `executor` call the module's pure Go handler with the fully processed data.
+3.  **HCL Loader (`hcl/translate.go`):** The HCL translation logic will be updated. Instead of using a placeholder, it will now properly evaluate a manifest's `type` expression (e.g., `string`) and store the resulting `cty.Type` object in the format-agnostic `config.InputDefinition` model.
+
+4.  **HCL Converter (`hcl/converter.go`):** The `DecodeBody` method will be enhanced. Before decoding a value into a Go struct, it will first use the `cty.Type` from the manifest's definition to perform a strict type check and conversion on the user-provided value. If the conversion fails, the process will stop and return an error.
 
 ---
 
 ## Validation and Testing
 
-A comprehensive **integration test suite** will be developed to validate each new declarative feature. Specific tests will be created for `default` value application, `validation` block enforcement, custom `type` conversion, and `sensitive` data redaction by running the full application and asserting the expected behavior.
+* A new integration test (`TestErrorHandling_TypeMismatch_FailsRun`) will be created to prove that providing a value that does not match the manifest's declared primitive type results in a clear error during the run.
+* A new startup validation test (`TestStartupValidation_ManifestGoTypeMismatch_Fails`) will be created. It will attempt to load a module where the manifest (`type = number`) and the Go struct (`string`) are incompatible and assert that the application fails to start.
+* Existing integration tests will be updated to use explicit primitive types to ensure they are compatible with the new, stricter checking.
 
 ---
 
@@ -49,11 +61,11 @@ A comprehensive **integration test suite** will be developed to validate each ne
 
 ### Positive
 
-* **Powerful Declarative Features:** The engine can enforce complex validation and handle custom types based on the manifest alone.
-* **Dramatically Simpler Modules:** Removes boilerplate validation and default-handling logic from module code.
-* **Improved Security:** The `sensitive` flag provides a built-in, enforced mechanism for redacting secret data.
+* The engine will now enforce the primitive type contract defined in module manifests.
+* Strict type parity between a module's manifest and its Go implementation is now guaranteed at startup.
+* Users will get clearer and earlier feedback on configuration errors.
+* Establishes a solid, tested foundation for subsequent type system enhancements (ADR-010, ADR-011).
 
 ### Negative
 
-* **Significant Executor Complexity:** The `executor`'s internal pipeline becomes much more complex. Debugging this "magic" will be challenging.
-* **Increased Performance Overhead:** The additional validation and processing stages add to the execution time of every step.
+* Adds a small amount of logical complexity to the configuration loading and validation pipeline.
