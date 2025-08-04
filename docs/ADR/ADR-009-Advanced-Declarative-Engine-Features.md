@@ -1,6 +1,6 @@
 # ADR-009: Primitive Type System
 
-**Status:** Proposed
+**Status:** Implemented
 **Date:** 2025-08-04
 **Depends On:** ADR-008
 
