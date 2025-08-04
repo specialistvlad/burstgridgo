@@ -62,24 +62,41 @@ func (c *Converter) DecodeBody(
 		targetPtr := fieldVal.Addr().Interface()
 		argExpr, argProvided := args[lookupName]
 
+		var valueToDecode cty.Value
+		var valueSource string
+
 		if argProvided {
 			val, diags := argExpr.Value(evalCtx)
 			if diags.HasErrors() {
 				return diags
 			}
-			if err := c.decode(ctx, val, targetPtr); err != nil {
-				return fmt.Errorf("failed to decode argument '%s': %w", lookupName, err)
-			}
+			valueToDecode = val
+			valueSource = "user-provided argument"
 		} else {
 			if inputDef.Default == nil && !inputDef.Optional {
 				return fmt.Errorf("missing required argument %q", lookupName)
 			}
-
 			if inputDef.Default != nil {
-				if err := c.decode(ctx, *inputDef.Default, targetPtr); err != nil {
-					return fmt.Errorf("failed to apply default for '%s': %w", lookupName, err)
-				}
+				valueToDecode = *inputDef.Default
+				valueSource = "default value"
+			} else {
+				continue // Optional field with no default and no value provided
 			}
+		}
+
+		// Perform type conversion based on the manifest's definition.
+		// This is the core of ADR-009's runtime enforcement.
+		manifestType := inputDef.Type
+		if !manifestType.Equals(cty.DynamicPseudoType) {
+			var err error
+			valueToDecode, err = convert.Convert(valueToDecode, manifestType)
+			if err != nil {
+				return fmt.Errorf("failed to convert %s for argument '%s': %w", valueSource, lookupName, err)
+			}
+		}
+
+		if err := c.decode(ctx, valueToDecode, targetPtr); err != nil {
+			return fmt.Errorf("failed to decode argument '%s': %w", lookupName, err)
 		}
 	}
 	logger.Debug("Finished HCL body decoding successfully.")
@@ -94,6 +111,9 @@ func (c *Converter) decode(ctx context.Context, val cty.Value, goVal any) error 
 		return fmt.Errorf("target for decoding must be a pointer, got %T", goVal)
 	}
 
+	// In ADR-009, the initial conversion now happens in DecodeBody. This function
+	// still needs to handle final conversion to the specific Go type if it differs
+	// from the general cty.Type (e.g. cty.Number to int64).
 	impliedType, err := gocty.ImpliedType(valPtr.Elem().Interface())
 	if err != nil {
 		logger.Debug("Could not imply cty.Type from Go type, attempting direct decoding.", "go_type", valPtr.Elem().Type().String(), "error", err)

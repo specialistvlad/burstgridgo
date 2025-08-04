@@ -2,25 +2,25 @@ package registry
 
 import (
 	"fmt"
+	"log/slog"
+	"reflect"
 	"strings"
+
+	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/gocty"
 )
 
-// ValidateRegistry performs a strict parity check between the inputs declared
-// in HCL manifests and the fields defined in the corresponding Go input structs.
-// It uses reflection to read the `bggo` tags from the Go struct and ensures
-// the two sets of inputs are identical. This prevents runtime errors caused by
-// a mismatch between a module's Go code and its public manifest.
+// ValidateRegistry performs a strict parity check between manifests and Go code.
+// It checks both the presence of inputs and the compatibility of their types.
 func (r *Registry) ValidateRegistry() error {
 	var errs []string
 
 	for runnerType, def := range r.DefinitionRegistry {
 		handler, ok := r.HandlerRegistry[def.Lifecycle.OnRun]
 		if !ok {
-			// This case is unlikely as it's caught earlier, but we check for completeness.
 			continue
 		}
 
-		// If the handler doesn't define an input type, there's nothing to validate.
 		if handler.InputType == nil {
 			if len(def.Inputs) > 0 {
 				errs = append(errs, fmt.Sprintf("runner '%s': manifest declares inputs, but Go handler has no input struct", runnerType))
@@ -28,38 +28,61 @@ func (r *Registry) ValidateRegistry() error {
 			continue
 		}
 
-		// 1. Get all declared input names from the HCL manifest.
 		hclInputs := make(map[string]struct{})
 		for name := range def.Inputs {
 			hclInputs[name] = struct{}{}
 		}
 
-		// 2. Get all field names from the Go Input struct using bggo tags.
-		goInputs := make(map[string]struct{})
+		goInputs := make(map[string]reflect.StructField)
 		inputType := handler.InputType
 		for i := 0; i < inputType.NumField(); i++ {
 			field := inputType.Field(i)
 			if !field.IsExported() {
 				continue
 			}
-
 			tag := field.Tag.Get("bggo")
 			tagName := strings.Split(tag, ",")[0]
-
 			if tagName != "" && tagName != "-" {
-				goInputs[tagName] = struct{}{}
+				goInputs[tagName] = field
 			}
 		}
 
-		// 3. Compare the two sets to find any mismatches.
+		// Check for presence mismatches
 		for name := range goInputs {
 			if _, ok := hclInputs[name]; !ok {
-				errs = append(errs, fmt.Sprintf("runner '%s': Go struct has field '%s' not declared in manifest", runnerType, name))
+				errs = append(errs, fmt.Sprintf("runner '%s': Go struct has field for input '%s' which is not declared in manifest", runnerType, name))
 			}
 		}
 		for name := range hclInputs {
 			if _, ok := goInputs[name]; !ok {
-				errs = append(errs, fmt.Sprintf("runner '%s': manifest declares input '%s' not found in Go struct", runnerType, name))
+				errs = append(errs, fmt.Sprintf("runner '%s': manifest declares input '%s' which is not found in Go struct", runnerType, name))
+			}
+		}
+
+		// Check for type mismatches
+		for name, inputDef := range def.Inputs {
+			goField, ok := goInputs[name]
+			if !ok {
+				continue // Already handled by presence check
+			}
+
+			manifestType := inputDef.Type
+			if manifestType.Equals(cty.DynamicPseudoType) {
+				slog.Warn("Manifest for runner has input with 'type = any', which disables static type checking. Consider using a specific type like 'string', 'number', or 'bool'.", "runner", runnerType, "input", name)
+				continue
+			}
+
+			// Infer type from the Go field
+			goFieldType, err := gocty.ImpliedType(reflect.Zero(goField.Type).Interface())
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("runner '%s', input '%s': could not imply cty type from Go field type %s: %v", runnerType, name, goField.Type, err))
+				continue
+			}
+
+			// The core type check
+			if !manifestType.Equals(goFieldType) {
+				errs = append(errs, fmt.Sprintf("runner '%s', input '%s': type mismatch. Manifest requires '%s' but Go struct field '%s' provides compatible type '%s'",
+					runnerType, name, manifestType.FriendlyName(), goField.Name, goFieldType.FriendlyName()))
 			}
 		}
 	}

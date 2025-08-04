@@ -49,6 +49,10 @@ func TestStartupValidation_ManifestImplementationMismatch_Fails(t *testing.T) {
 	// --- Assert ---
 	require.Error(t, result.Err, "app.New() should have panicked, but it did not")
 	errStr := result.Err.Error()
-	require.True(t, strings.Contains(errStr, "Go struct has field 'go_only_field' not declared in manifest"))
-	require.True(t, strings.Contains(errStr, "manifest declares input 'hcl_only_field' not found in Go struct"))
+
+	expectedGoError := "Go struct has field for input 'go_only_field' which is not declared in manifest"
+	require.True(t, strings.Contains(errStr, expectedGoError))
+
+	expectedHclError := "manifest declares input 'hcl_only_field' which is not found in Go struct"
+	require.True(t, strings.Contains(errStr, expectedHclError))
 }

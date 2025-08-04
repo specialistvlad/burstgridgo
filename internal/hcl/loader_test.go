@@ -74,7 +74,7 @@ func TestLoader_Load(t *testing.T) {
 		Inputs: map[string]*config.InputDefinition{
 			"message": {
 				Name:     "message",
-				Type:     cty.DynamicPseudoType,
+				Type:     cty.String,
 				Default:  &defaultValue,
 				Optional: true,
 			},

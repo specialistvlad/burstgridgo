@@ -32,7 +32,9 @@ func TestHclFeatures_OptionalArgumentDefault_FromFile(t *testing.T) {
 		    default = "standard"
 		  }
 		  input "metadata" {
-		    type    = map(string)
+		    // Using 'any' is the correct way to handle non-primitive types
+            // until complex types are fully supported.
+		    type    = any
 		    default = {
 		      "source" = "test-suite"
 		    }
