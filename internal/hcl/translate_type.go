@@ -27,11 +27,71 @@ func typeExprToCtyType(ctx context.Context, expr hcl.Expression) (cty.Type, erro
 	switch v := expr.(type) {
 	case *hclsyntax.FunctionCallExpr:
 		logger.Debug("Parsing type expression as a function call.", "call", v.Name)
+
+		if v.Name == "object" {
+			logger.Debug("Parsing 'object' type constructor.")
+			if len(v.Args) != 1 {
+				return cty.DynamicPseudoType, fmt.Errorf("the object() type constructor requires exactly one argument (the object definition), got %d", len(v.Args))
+			}
+
+			objExpr, ok := v.Args[0].(*hclsyntax.ObjectConsExpr)
+			if !ok {
+				return cty.DynamicPseudoType, fmt.Errorf("the argument to object() must be an object literal like { key = type, ... }, got %T", v.Args[0])
+			}
+
+			if len(objExpr.Items) == 0 {
+				logger.Debug("Detected generic 'object({})', creating empty object type.")
+				return cty.Object(map[string]cty.Type{}), nil
+			}
+
+			attrTypes := make(map[string]cty.Type)
+			logger.Debug("Parsing object attributes.", "count", len(objExpr.Items))
+
+			for _, item := range objExpr.Items {
+				logger.Debug("Inspecting key expression", "key_expr_type", fmt.Sprintf("%T", item.KeyExpr))
+				var key string
+				// 1. Check for the special wrapper type for object keys.
+				if keyExpr, ok := item.KeyExpr.(*hclsyntax.ObjectConsKeyExpr); ok {
+					// 2. Unwrap it and switch on the *actual* expression type inside.
+					switch kexpr := keyExpr.Wrapped.(type) {
+					case *hclsyntax.ScopeTraversalExpr:
+						if len(kexpr.Traversal) == 1 {
+							key = kexpr.Traversal.RootName()
+						}
+					case *hclsyntax.TemplateExpr:
+						if len(kexpr.Parts) == 1 {
+							if lit, isLit := kexpr.Parts[0].(*hclsyntax.LiteralValueExpr); isLit && lit.Val.Type().Equals(cty.String) {
+								key = lit.Val.AsString()
+							}
+						}
+					}
+				}
+
+				if key == "" {
+					return cty.DynamicPseudoType, fmt.Errorf("invalid key in object type definition: keys must be simple identifiers or quoted strings, not complex expressions")
+				}
+
+				itemLogger := logger.With("attribute_name", key)
+				itemLogger.Debug("Parsing attribute.")
+
+				valueType, err := typeExprToCtyType(ctx, item.ValueExpr)
+				if err != nil {
+					return cty.DynamicPseudoType, fmt.Errorf("in object attribute '%s': %w", key, err)
+				}
+				itemLogger.Debug("Parsed attribute type.", "attribute_type", valueType.FriendlyName())
+				attrTypes[key] = valueType
+			}
+
+			finalType := cty.Object(attrTypes)
+			logger.Debug("Successfully constructed object type.", "final_type", finalType.FriendlyName())
+			return finalType, nil
+		}
+
+		// Legacy logic for list, map, set
 		if len(v.Args) != 1 {
 			return cty.DynamicPseudoType, fmt.Errorf("type constructors (list, map, set) require exactly one argument, got %d", len(v.Args))
 		}
 
-		// Recursively parse the inner type.
 		elementType, err := typeExprToCtyType(ctx, v.Args[0])
 		if err != nil {
 			return cty.DynamicPseudoType, err
@@ -53,7 +113,6 @@ func typeExprToCtyType(ctx context.Context, expr hcl.Expression) (cty.Type, erro
 		}
 
 	case *hclsyntax.ScopeTraversalExpr:
-		// This handles primitive type identifiers like `string` or `number`.
 		if len(v.Traversal) != 1 {
 			return cty.DynamicPseudoType, fmt.Errorf("invalid type keyword: traversal path is not a single identifier")
 		}
@@ -73,7 +132,6 @@ func typeExprToCtyType(ctx context.Context, expr hcl.Expression) (cty.Type, erro
 		}
 
 	default:
-		// Fallback for any other kind of expression.
 		return cty.DynamicPseudoType, fmt.Errorf("unsupported expression for type definition: %T", v)
 	}
 }
