@@ -63,10 +63,10 @@ The sequence is as follows:
     * These paths are passed to a `config.Loader` (currently the `hcl.Loader` implementation).
     * The loader recursively discovers all `.hcl` files, parses their contents (identifying `runner`, `asset`, `step`, and `resource` blocks), and assembles them into a single, in-memory `config.Model`. This model represents the entire desired state for the run.
 
-2.  **Module Registration Integrity**:
-    * This is the primary static validation step.
-    * The engine ensures that every lifecycle handler named in a manifest (e.g., `lifecycle { on_run = "OnRunMyModule" }`) corresponds to a Go handler that was actually registered in the `registry`.
-    * This check prevents fatal runtime errors due to typos or mismatches between the configuration and the compiled Go code. The flexible `bggo` tag now manages the field-level mapping, which is handled at runtime.
+2.  **Module Registration & Parity Validation**:
+    * This is a two-part static validation step:
+      * **Handler-Manifest Linking**: The engine ensures that every lifecycle handler named in a manifest (e.g., `lifecycle { on_run = "OnRunMyModule" }`) corresponds to a Go handler that was actually registered in the `registry`.
+      * **Input-Struct Parity**: The engine performs a strict parity check (`registry.ValidateRegistry()`) between the `input` blocks in the manifest and the `bggo:"..."` tags of the corresponding Go `Input` struct. This guarantees that the Go code and its public contract are perfectly in sync before any execution begins.
 
 ### Phase 2: Per-Step Runtime Pipeline
 
@@ -80,19 +80,20 @@ The sequence is as follows:
     * The `executor` first identifies any HCL expressions within the step's argument block (e.g., `args = { message = "Hello, ${step.A.output.name}!" }`).
     * It resolves these expressions using the current evaluation context, substituting them with their real, calculated values.
 
-2.  **Input Translation (`ADR-008`)**:
+2.  **Default Value Application**:
+    * Before decoding user-provided arguments, the `executor` checks the module's manifest for any inputs that have a `default` value.
+    * If a user omits an optional argument that has a defined default, the engine applies that default value, ensuring predictable behavior.
+
+3.  **Input Translation (`ADR-008`)**:
     * The `executor` creates a new, zero-value instance of the module's pure Go `Input` struct.
     * It uses the `config.Converter` interface to decode the step's argument data. The converter uses Go's reflection to inspect the `Input` struct's fields, reads the `bggo:"..."` tags to determine the mapping key, and then populates the fields with the configuration data.
 
-3.  **Declarative Manifest Validation (`ADR-009 - Future Work`)**:
-    * The `executor` will inspect the runner's manifest for any declarative `validation {}` blocks associated with the inputs.
-    * It will enforce these rules against the data now present in the populated Go `Input` struct.
-    * If any of these validations fail, the step fails, and the execution of the graph is halted.
-
-4.  **Imperative Handler Validation (`ADR-009 - Future Work`)**:
-    * After passing the manifest's declarative checks, the engine will check if the module's Go handler struct implements an optional `Validate() error` method.
-    * If it exists, the `executor` calls this method. This allows the module author to perform complex, cross-field business logic validation.
-    * If this method returns an error, the step fails.
+4.  **ADR-009 (Revised): Primitive Type System (Future Work)**:
+    * The first step in enriching the engine is to build an explicit, manifest-driven type system. This work is broken into phases:
+        * **`ADR-009` (Primitive Types)**: Implement enforcement of `string`, `number`, and `bool` types as defined in manifests. This ensures that user-provided values conform to the type contract of the module.
+        * **`ADR-010` (Collection Types)**: Introduce support for `list(<type>)`, `map(<type>)`, and `set(<type>)`.
+        * **`ADR-011` (Structural Types)**: Introduce support for the `object({...})` type for complex, nested inputs.
+    * Declarative features like `validation {}` blocks and sensitive input handling will be built on top of this type system in subsequent ADRs.
 
 5.  **Execution**:
     * Only after all preceding stages does the `executor` finally call the module's `OnRun(ctx, input)` method.
