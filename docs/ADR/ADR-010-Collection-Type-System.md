@@ -1,6 +1,6 @@
 ### ADR-010: Collection Type System
 
-**Status:** Proposed
+**Status:** Implemented
 **Date:** 2025-08-04
 **Depends On:** ADR-009
 
