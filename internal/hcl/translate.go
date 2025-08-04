@@ -9,6 +9,38 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// typeExprToCtyType converts an HCL type expression into its cty.Type equivalent.
+func typeExprToCtyType(expr hcl.Expression) cty.Type {
+	// A nil expression is treated as 'any'.
+	if expr == nil {
+		return cty.DynamicPseudoType
+	}
+
+	// The `type` attribute should be a simple variable reference (e.g., `string`).
+	traversals := expr.Variables()
+	if len(traversals) != 1 || len(traversals[0]) != 1 {
+		// If it's more complex, we treat it as 'any' for now. This will be
+		// handled by later ADRs for complex types like list(string).
+		return cty.DynamicPseudoType
+	}
+
+	// We extract the identifier name from the expression.
+	rootName := traversals[0].RootName()
+	switch rootName {
+	case "string":
+		return cty.String
+	case "number":
+		return cty.Number
+	case "bool":
+		return cty.Bool
+	case "any":
+		return cty.DynamicPseudoType
+	default:
+		// Fallback for unknown or complex types.
+		return cty.DynamicPseudoType
+	}
+}
+
 // translateStep converts the HCL-specific step schema into the agnostic model.
 func (l *Loader) translateStep(s *schema.Step) *config.Step {
 	return &config.Step{
@@ -48,25 +80,24 @@ func (l *Loader) translateRunnerDefinition(ctx context.Context, s *schema.Runner
 
 		if in.Default != nil {
 			val, diags := in.Default.Value(nil)
-			// A default is only valid if it evaluates without error AND is not null.
 			if !diags.HasErrors() && !val.IsNull() {
 				defaultVal = &val
-				isOptional = true // It's optional because a valid default exists.
+				isOptional = true
 			}
 		}
 
 		r.Inputs[in.Name] = &config.InputDefinition{
 			Name:        in.Name,
-			Type:        cty.DynamicPseudoType, // Placeholder until ADR-009
+			Type:        typeExprToCtyType(in.Type),
 			Description: in.Description,
 			Default:     defaultVal,
-			Optional:    isOptional, // This is now set correctly.
+			Optional:    isOptional,
 		}
 	}
 	for _, out := range s.Outputs {
 		r.Outputs[out.Name] = &config.OutputDefinition{
 			Name:        out.Name,
-			Type:        cty.DynamicPseudoType, // Placeholder until ADR-009
+			Type:        typeExprToCtyType(out.Type),
 			Description: out.Description,
 		}
 	}
@@ -96,16 +127,15 @@ func (l *Loader) translateAssetDefinition(ctx context.Context, s *schema.AssetDe
 
 		if in.Default != nil {
 			val, diags := in.Default.Value(nil)
-			// A default is only valid if it evaluates without error AND is not null.
 			if !diags.HasErrors() && !val.IsNull() {
 				defaultVal = &val
-				isOptional = true // It's optional because a valid default exists.
+				isOptional = true
 			}
 		}
 
 		a.Inputs[in.Name] = &config.InputDefinition{
 			Name:        in.Name,
-			Type:        cty.DynamicPseudoType,
+			Type:        typeExprToCtyType(in.Type),
 			Description: in.Description,
 			Default:     defaultVal,
 			Optional:    isOptional,
@@ -114,7 +144,7 @@ func (l *Loader) translateAssetDefinition(ctx context.Context, s *schema.AssetDe
 	for _, out := range s.Outputs {
 		a.Outputs[out.Name] = &config.OutputDefinition{
 			Name:        out.Name,
-			Type:        cty.DynamicPseudoType,
+			Type:        typeExprToCtyType(out.Type),
 			Description: out.Description,
 		}
 	}

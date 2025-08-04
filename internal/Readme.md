@@ -66,7 +66,9 @@ The sequence is as follows:
 2.  **Module Registration & Parity Validation**:
     * This is a two-part static validation step:
       * **Handler-Manifest Linking**: The engine ensures that every lifecycle handler named in a manifest (e.g., `lifecycle { on_run = "OnRunMyModule" }`) corresponds to a Go handler that was actually registered in the `registry`.
-      * **Input-Struct Parity**: The engine performs a strict parity check (`registry.ValidateRegistry()`) between the `input` blocks in the manifest and the `bggo:"..."` tags of the corresponding Go `Input` struct. This guarantees that the Go code and its public contract are perfectly in sync before any execution begins.
+      * **Input/Type Parity**: The engine performs a strict parity check (`registry.ValidateRegistry()`) between the manifest and the Go `Input` struct. This validation is twofold:
+        * **Presence**: It ensures every `input` block in the manifest has a corresponding `bggo:"..."` tagged field in the Go struct, and vice-versa.
+        * **Type**: It ensures the `type` declared in the manifest (e.g., `type = number`) is compatible with the type of the Go field. If they are not compatible, the application will fail to start.
 
 ### Phase 2: Per-Step Runtime Pipeline
 
@@ -84,16 +86,14 @@ The sequence is as follows:
     * Before decoding user-provided arguments, the `executor` checks the module's manifest for any inputs that have a `default` value.
     * If a user omits an optional argument that has a defined default, the engine applies that default value, ensuring predictable behavior.
 
-3.  **Input Translation (`ADR-008`)**:
-    * The `executor` creates a new, zero-value instance of the module's pure Go `Input` struct.
-    * It uses the `config.Converter` interface to decode the step's argument data. The converter uses Go's reflection to inspect the `Input` struct's fields, reads the `bggo:"..."` tags to determine the mapping key, and then populates the fields with the configuration data.
+3.  **Type Validation & Conversion (`ADR-009`)**:
+    * The engine now uses the `type` from the manifest (e.g., `string`, `number`, `bool`) as the source of truth.
+    * It attempts to convert the user-provided value (or the default value) to this declared type.
+    * If the conversion fails (e.g., passing `"hello"` to an input of type `number`), the run fails immediately with a clear type-mismatch error.
 
-4.  **ADR-009 (Revised): Primitive Type System (Future Work)**:
-    * The first step in enriching the engine is to build an explicit, manifest-driven type system. This work is broken into phases:
-        * **`ADR-009` (Primitive Types)**: Implement enforcement of `string`, `number`, and `bool` types as defined in manifests. This ensures that user-provided values conform to the type contract of the module.
-        * **`ADR-010` (Collection Types)**: Introduce support for `list(<type>)`, `map(<type>)`, and `set(<type>)`.
-        * **`ADR-011` (Structural Types)**: Introduce support for the `object({...})` type for complex, nested inputs.
-    * Declarative features like `validation {}` blocks and sensitive input handling will be built on top of this type system in subsequent ADRs.
+4.  **Input Translation (`ADR-008`)**:
+    * The `executor` creates a new, zero-value instance of the module's pure Go `Input` struct.
+    * It uses the `config.Converter` interface to decode the type-validated data into the Go struct, using the `bggo:"..."` tags for mapping.
 
 5.  **Execution**:
     * Only after all preceding stages does the `executor` finally call the module's `OnRun(ctx, input)` method.
@@ -102,3 +102,8 @@ The sequence is as follows:
 6.  **Output Translation (`ADR-008`)**:
     * After the pure Go handler executes and returns its `Output` struct, the `executor` calls the `converter` again.
     * The converter translates this native struct back into the engine's internal representation (e.g., a `cty.Value` object). It inspects the `cty:"..."` tags on the struct's fields to ensure the output can be correctly used by downstream steps that depend on it.
+
+### Future Work: Advanced Types
+* **`ADR-010` (Planned)**: Introduce support for collection types: `list(<type>)`, `map(<type>)`, and `set(<type>)`.
+* **`ADR-011` (Planned)**: Introduce support for the structural `object({...})` type for complex, nested inputs.
+* Declarative features like `validation {}` blocks and sensitive input handling will be built on top of this type system in subsequent ADRs.
