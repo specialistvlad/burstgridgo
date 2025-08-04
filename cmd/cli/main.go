@@ -22,16 +22,18 @@ func main() {
 	// The real main function handles errors and exit codes.
 	if err := run(os.Stdout, os.Args[1:]); err != nil {
 		if exitErr, ok := err.(*cli.ExitError); ok {
+			// cli.Parse returns specific exit codes for argument errors.
 			fmt.Fprintln(os.Stderr, exitErr.Message)
 			os.Exit(exitErr.Code)
 		}
+		// All other errors, including panics from run(), result in a generic exit code 1.
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-// run encapsulates the main application logic for easier testing and error handling.
-func run(outW io.Writer, args []string) error {
+// run encapsulates the main application logic.
+func run(outW io.Writer, args []string) (err error) {
 	appConfig, shouldExit, err := cli.Parse(args, outW)
 	if err != nil {
 		return err
@@ -40,12 +42,9 @@ func run(outW io.Writer, args []string) error {
 		return nil
 	}
 
-	// The app panics on critical config errors, so we recover here to provide
-	// a clean exit message to the user.
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(outW, "A critical startup error occurred: %v\n", r)
-			os.Exit(1)
+			err = fmt.Errorf("application startup panicked: %v", r)
 		}
 	}()
 
