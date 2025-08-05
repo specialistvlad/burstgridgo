@@ -8,11 +8,9 @@ import (
 
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/zclconf/go-cty/cty"
-	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 // ValidateRegistry performs a strict parity check between manifests and Go code.
-// It checks both the presence of inputs and the compatibility of their types.
 func (r *Registry) ValidateRegistry(ctx context.Context) error {
 	var allErrors []string
 	logger := ctxlog.FromContext(ctx)
@@ -20,7 +18,6 @@ func (r *Registry) ValidateRegistry(ctx context.Context) error {
 	for runnerType, def := range r.DefinitionRegistry {
 		handler, ok := r.HandlerRegistry[def.Lifecycle.OnRun]
 		if !ok {
-			// This can happen for runners that are defined but not used by any module.
 			continue
 		}
 
@@ -65,13 +62,12 @@ func (r *Registry) ValidateRegistry(ctx context.Context) error {
 			}
 		}
 
-		// Check for type mismatches using the new recursive validator
+		// Check for type mismatches using the refactored dispatcher.
 		for name, inputDef := range def.Inputs {
 			goField, ok := goInputFields[name]
 			if !ok {
-				continue // Already handled by presence check
+				continue
 			}
-
 			if err := r.validateTypeParity(ctx, runnerType, name, inputDef.Type, goField); err != nil {
 				allErrors = append(allErrors, err.Error())
 			}
@@ -86,100 +82,18 @@ func (r *Registry) ValidateRegistry(ctx context.Context) error {
 	return nil
 }
 
-// validateTypeParity recursively compares a manifest type with a Go field's type.
+// validateTypeParity is the main dispatcher for type validation.
 func (r *Registry) validateTypeParity(ctx context.Context, ownerName, inputPath string, manifestType cty.Type, goField reflect.StructField) error {
-	logger := ctxlog.FromContext(ctx).With(
-		"owner", ownerName,
-		"input_path", inputPath,
-		"manifest_type", manifestType.FriendlyName(),
-		"go_type", goField.Type.String(),
-		"go_field", goField.Name,
-	)
-	logger.Debug("Performing type parity validation.")
+	logger := ctxlog.FromContext(ctx).With("input_path", inputPath)
 
-	// Case 1: The manifest type is 'any', which allows any Go type.
 	if manifestType.Equals(cty.DynamicPseudoType) {
 		logger.Debug("Manifest type is 'any', skipping strict type check.")
 		return nil
 	}
 
-	// Case 2: The manifest type is an object. This requires recursive validation.
 	if manifestType.IsObjectType() {
-		logger.Debug("Validating as an object type.")
-		goFieldType := goField.Type
-		if goFieldType.Kind() == reflect.Pointer {
-			goFieldType = goFieldType.Elem()
-		}
-
-		if goFieldType.Kind() != reflect.Struct {
-			return fmt.Errorf("runner '%s', input '%s': type mismatch. Manifest requires an 'object', but Go field '%s' is not a struct (it's a %s)", ownerName, inputPath, goField.Name, goFieldType.Kind())
-		}
-
-		manifestAttrs := manifestType.AttributeTypes()
-		goStructFields := getStructFieldsByCtyTag(goFieldType)
-
-		// Check that all manifest attributes exist in the Go struct.
-		for attrName := range manifestAttrs {
-			if _, ok := goStructFields[attrName]; !ok {
-				return fmt.Errorf("runner '%s', input '%s': attribute '%s' is required by the manifest but is missing from Go struct '%s'", ownerName, inputPath, attrName, goFieldType.Name())
-			}
-		}
-
-		// Check that all Go struct fields are defined in the manifest.
-		for tagName, field := range goStructFields {
-			if _, ok := manifestAttrs[tagName]; !ok {
-				return fmt.Errorf("runner '%s', input '%s': Go struct '%s' has field '%s' (cty tag '%s') which is not defined in the manifest object type", ownerName, inputPath, goFieldType.Name(), field.Name, tagName)
-			}
-		}
-
-		// Recursively validate the types of each attribute.
-		for attrName, manifestAttrType := range manifestAttrs {
-			goStructField := goStructFields[attrName]
-			err := r.validateTypeParity(ctx, ownerName, fmt.Sprintf("%s.%s", inputPath, attrName), manifestAttrType, goStructField)
-			if err != nil {
-				// We need to re-wrap the error to provide the full context path.
-				return fmt.Errorf("runner '%s', input '%s': attribute '%s' type mismatch: %w", ownerName, inputPath, attrName, err)
-			}
-		}
-		return nil
+		return r.validateObjectType(ctx, ownerName, inputPath, manifestType, goField)
 	}
 
-	// Case 3: Primitive or collection types.
-	logger.Debug("Validating as a primitive or collection type.")
-	impliedGoType, err := gocty.ImpliedType(reflect.Zero(goField.Type).Interface())
-	if err != nil {
-		return fmt.Errorf("runner '%s', input '%s': could not imply cty type from Go field type %s: %w", ownerName, inputPath, goField.Type, err)
-	}
-
-	if !manifestType.Equals(impliedGoType) {
-		// The base case for the recursion returns the most specific error.
-		if strings.Contains(inputPath, ".") {
-			return fmt.Errorf("manifest requires '%s', but Go struct field '%s' provides '%s'", manifestType.FriendlyName(), goField.Name, impliedGoType.FriendlyName())
-		}
-		return fmt.Errorf("runner '%s', input '%s': type mismatch. Manifest requires '%s' but Go struct field '%s' provides compatible type '%s'",
-			ownerName, inputPath, manifestType.FriendlyName(), goField.Name, impliedGoType.FriendlyName())
-	}
-
-	return nil
-}
-
-// getStructFieldsByCtyTag inspects a struct type and returns a map of its
-// fields keyed by their `cty:"..."` tag.
-func getStructFieldsByCtyTag(structType reflect.Type) map[string]reflect.StructField {
-	fields := make(map[string]reflect.StructField)
-	if structType.Kind() != reflect.Struct {
-		return fields
-	}
-	for i := 0; i < structType.NumField(); i++ {
-		field := structType.Field(i)
-		if !field.IsExported() {
-			continue
-		}
-		tag := field.Tag.Get("cty")
-		tagName := strings.Split(tag, ",")[0]
-		if tagName != "" && tagName != "-" {
-			fields[tagName] = field
-		}
-	}
-	return fields
+	return r.validatePrimitiveOrCollectionType(ctx, ownerName, inputPath, manifestType, goField)
 }

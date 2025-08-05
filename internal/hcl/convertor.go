@@ -89,11 +89,16 @@ func (c *Converter) DecodeBody(
 			}
 		}
 
-		// Perform type conversion based on the manifest's definition.
 		manifestType := inputDef.Type
-		fieldLogger.Debug("Starting conversion based on manifest type.", "manifest_type", manifestType.FriendlyName())
-		if !manifestType.Equals(cty.DynamicPseudoType) {
-			var err error
+
+		// Only perform strict conversion for non-object, non-dynamic types.
+		// For objects, we rely on startup validation and want to decode the raw
+		// value to avoid destructively stripping attributes.
+		if !manifestType.IsObjectType() && !manifestType.Equals(cty.DynamicPseudoType) {
+			fieldLogger.Debug(
+				"Performing strict type conversion based on manifest.",
+				"manifest_type", manifestType.FriendlyName(),
+			)
 			convertedValue, err := convert.Convert(valueToDecode, manifestType)
 			if err != nil {
 				return fmt.Errorf("failed to convert %s value for argument '%s': %w", valueSource, lookupName, err)
@@ -102,6 +107,11 @@ func (c *Converter) DecodeBody(
 				fieldLogger.Debug("Value was converted to match manifest type.", "from_type", valueToDecode.Type().FriendlyName(), "to_type", convertedValue.Type().FriendlyName(), "new_value", convertedValue.GoString())
 			}
 			valueToDecode = convertedValue
+		} else {
+			fieldLogger.Debug(
+				"Skipping strict manifest type conversion for object or dynamic type.",
+				"manifest_type", manifestType.FriendlyName(),
+			)
 		}
 
 		if err := c.decode(ctx, valueToDecode, targetPtr); err != nil {
@@ -122,6 +132,12 @@ func (c *Converter) decode(ctx context.Context, val cty.Value, goVal any) error 
 
 	goType := valPtr.Elem().Type()
 	decodeLogger := logger.With("target_go_type", goType.String())
+
+	// For a generic interface, we can't imply a specific type, so we decode directly.
+	if goType.Kind() == reflect.Interface {
+		decodeLogger.Debug("Target is interface{}, attempting direct unsafe decoding.")
+		return gocty.FromCtyValue(val, goVal)
+	}
 
 	impliedType, err := gocty.ImpliedType(valPtr.Elem().Interface())
 	if err != nil {
