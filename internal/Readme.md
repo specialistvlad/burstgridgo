@@ -33,7 +33,7 @@ The system is composed of several interlocking packages that manage the applicat
 * **2. Module Author Defines:**
     * **Manifest File** (`.hcl`): Defines the public API of a 'runner' or 'asset'.
     * **Go `Module`** (`.go`): Implements the component's business logic in pure Go.
-        * **Inputs:** The module's `Input` **must** be a pure Go `struct` that uses a generic `bggo:"..."` tag to map configuration keys to its fields.
+        * **Inputs:** The module's `Input` **must** be a pure Go `struct`. **Fields in this top-level struct use the `bggo:"..."` tag to map HCL arguments. Any nested structs representing HCL objects must use the `cty:"..."` tag for their fields.**
         * **Outputs:** If a handler returns data, it **must** be a pure Go `struct` that uses `cty:"..."` tags on its fields to map them to the attribute names expected by the engine.
 
 * **3. User Defines:**
@@ -68,7 +68,7 @@ The sequence is as follows:
       * **Handler-Manifest Linking**: The engine ensures that every lifecycle handler named in a manifest (e.g., `lifecycle { on_run = "OnRunMyModule" }`) corresponds to a Go handler that was actually registered in the `registry`.
       * **Input/Type Parity**: The engine performs a strict parity check (`registry.ValidateRegistry()`) between the manifest and the Go `Input` struct. This validation is twofold:
         * **Presence**: It ensures every `input` block in the manifest has a corresponding `bggo:"..."` tagged field in the Go struct, and vice-versa.
-        * **Type**: It ensures the `type` declared in the manifest (e.g., `type = list(number)`) is compatible with the type of the Go field (e.g., `[]int`). If they are not compatible, the application will fail to start.
+        * **Type**: It ensures the `type` declared in the manifest (e.g., `type = list(number)`) is compatible with the type of the Go field (e.g., `[]int`). **This validation is fully recursive, checking the entire shape and all attribute types of nested objects.** If they are not compatible, the application will fail to start.
 
 ### Phase 2: Per-Step Runtime Pipeline
 
@@ -86,10 +86,13 @@ The sequence is as follows:
     * Before decoding user-provided arguments, the `executor` checks the module's manifest for any inputs that have a `default` value.
     * If a user omits an optional argument that has a defined default, the engine applies that default value, ensuring predictable behavior.
 
-3.  **Type System & Validation (ADR-009 & ADR-010)**:
+3.  **Type System & Validation (ADR-009, ADR-010, & ADR-011)**:
     * The engine now uses the `type` from the manifest as the single source of truth. The following types are supported:
         * **Primitives:** `string`, `number`, `bool`
         * **Collections:** `list(T)`, `map(T)`, `set(T)` where `T` is one of the primitive types.
+        * **Objects:**
+            * **`object({key=type, ...})`**: A structurally-typed object that maps to a Go `struct`.
+            * **`object({})`**: A generic object that maps to a Go `map[string]any`.
     * The engine attempts to convert the user-provided value (or the default value) to this declared type.
     * If the conversion fails (e.g., passing `["a", 1]` to an input of type `list(string)`), the run fails immediately with a clear type-mismatch error.
 
@@ -105,6 +108,6 @@ The sequence is as follows:
     * After the pure Go handler executes and returns its `Output` struct, the `executor` calls the `converter` again.
     * The converter translates this native struct back into the engine's internal representation (e.g., a `cty.Value` object). It inspects the `cty:"..."` tags on the struct's fields to ensure the output can be correctly used by downstream steps that depend on it.
 
-### Future Work: Advanced Types
-* **`ADR-011` (Planned)**: Introduce support for the structural `object({...})` type for complex, nested inputs.
+### Future Work
+* **`ADR-012` (Planned)**: Introduce support for **meta-arguments** (`count`, `for_each`) to allow dynamic creation of multiple step and resource instances.
 * Declarative features like `validation {}` blocks and sensitive input handling will be built on top of this type system in subsequent ADRs.
