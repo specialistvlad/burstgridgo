@@ -6,12 +6,13 @@ step "env_vars" "db" {
     defaults = {
       "DB_HOST" = "localhost"
       "DB_USER" = "guest"
+      "DB_PASS" = "secret"
     }
     required = ["DB_HOST", "DB_USER", "DB_PASS"]
   }
 }
 
-step "print" "show_config" {
+step "print" "show_db_config" {
   arguments {
     input = step.env_vars.db.output.vars
   }

@@ -8,7 +8,7 @@ step "env_vars" "optional" {
   }
 }
 
-step "print" "show_config" {
+step "print" "show_optional_config" {
   arguments {
     input = step.env_vars.optional.output.vars.LOG_LEVEL
   }
