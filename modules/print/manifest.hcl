@@ -1,9 +1,9 @@
 runner "print" {
-  description = "Prints the contents of a map to the console."
+  description = "A general-purpose runner that prints any given value to the logs for debugging."
 
   input "input" {
-    type        = map(string)
-    description = "The map of strings to be printed."
+    type        = any
+    description = "The value to be printed. Can be of any type."
   }
 
   lifecycle {

@@ -2,44 +2,31 @@ package print
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
 	"reflect"
-	"sort"
 
+	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
 // Module implements the registry.Module interface for this package.
 type Module struct{}
 
-// Input defines the arguments for the print runner.
+// Input defines the arguments for the print runner. It accepts any single value.
 type Input struct {
-	Value map[string]string `bggo:"input"`
+	Value any `bggo:"input"`
 }
 
 // Deps is an empty struct because this runner does not use any resources.
 type Deps struct{}
 
 // OnRunPrint is the handler for the 'print' runner's on_run lifecycle event.
+// It logs the provided input value using the contextual structured logger.
 func OnRunPrint(ctx context.Context, deps *Deps, input *Input) (any, error) {
-	slog.Info("Printing input")
+	logger := ctxlog.FromContext(ctx)
 
-	if input.Value == nil {
-		fmt.Println("      (null)")
-		return nil, nil
-	}
-
-	// Sort keys for consistent output
-	keys := make([]string, 0, len(input.Value))
-	for k := range input.Value {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		fmt.Printf("      %s = %q\n", k, input.Value[k])
-	}
+	// Log the received value. slog handles formatting for various types
+	// (primitives, maps, slices, structs) automatically.
+	logger.Info("Printing input value", "value", input.Value)
 
 	return nil, nil
 }
