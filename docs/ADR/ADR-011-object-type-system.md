@@ -1,6 +1,6 @@
 ### ADR-011: Object Type System
 
-**Status:** Implementation
+**Status:** Implemented
 **Date:** 2025-08-04
 **Depends On:** ADR-010
 
