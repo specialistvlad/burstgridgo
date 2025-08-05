@@ -5,25 +5,25 @@ runner "env_vars" {
 
   input "include" {
     type        = list(string)
-    description = "A list of variable names to include in the output. If omitted, all variables are considered (unless 'prefix' is used)."
+    description = "An explicit list of variable names to process. This list is combined with keys from the 'defaults' and 'required' blocks."
     default     = []
   }
 
   input "required" {
     type        = list(string)
-    description = "A list of variable names that must be present in the environment or have a default. If any are missing, the step will fail."
+    description = "A list of variable names that must be present. The step fails if a key is not in the environment and has no default. Keys listed here are automatically included for processing."
     default     = []
   }
 
   input "defaults" {
     type        = map(string)
-    description = "A map of default values to use if a variable is not found in the environment."
-    default     = []
+    description = "A map of default values for variables not found in the environment. All keys in this map are automatically included for processing."
+    default     = {}
   }
 
   input "prefix" {
     type        = string
-    description = "Only include variables that start with this prefix. Overridden by 'include' if both are provided."
+    description = "A prefix for discovering variables from the environment. This is only used if 'include', 'defaults', and 'required' are all empty."
     default     = ""
   }
 
