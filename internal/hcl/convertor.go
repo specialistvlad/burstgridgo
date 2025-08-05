@@ -133,12 +133,28 @@ func (c *Converter) decode(ctx context.Context, val cty.Value, goVal any) error 
 	goType := valPtr.Elem().Type()
 	decodeLogger := logger.With("target_go_type", goType.String())
 
-	// For a generic interface, we can't imply a specific type, so we decode directly.
-	if goType.Kind() == reflect.Interface {
-		decodeLogger.Debug("Target is interface{}, attempting direct unsafe decoding.")
-		return gocty.FromCtyValue(val, goVal)
-	}
+	// --- Custom Decoder for Generic Objects (ADR-011) ---
+	// This case handles decoding into map[string]any or any, which requires our
+	// custom recursive ctyToNative converter.
+	mapStringAnyType := reflect.TypeOf((map[string]any)(nil))
+	anyType := reflect.TypeOf((*any)(nil)).Elem()
 
+	if (goType == mapStringAnyType && (val.Type().IsObjectType() || val.Type().IsMapType())) || goType == anyType {
+		decodeLogger.Debug("Using custom recursive decoder for generic type.")
+		nativeVal, err := ctyToNative(val)
+		if err != nil {
+			return fmt.Errorf("failed to convert to native Go value: %w", err)
+		}
+
+		// When the target is 'any', the nativeVal might be nil.
+		if nativeVal != nil {
+			valPtr.Elem().Set(reflect.ValueOf(nativeVal))
+		}
+		return nil
+	}
+	// --- End Custom Decoder ---
+
+	// At this point, we are decoding into a specific, concrete Go type.
 	impliedType, err := gocty.ImpliedType(valPtr.Elem().Interface())
 	if err != nil {
 		decodeLogger.Debug("Could not imply cty.Type from Go type, attempting direct unsafe decoding.", "error", err)
