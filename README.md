@@ -21,29 +21,24 @@
   </a>
 </div>
 
- <br>
+<br>
 
-**⚠️ Important Note: Project Status ⚠️**
+> **⚠️ Project Status: Proof of Concept ⚠️**
+>
+> This project is under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. It is not recommended for production use at this stage.
 
-This project is currently under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. This project is not recommended for external production use; it is a POC (proof of concept).
-
-**⚠️ Important Note: Project Status ⚠️**
-
-
-
-`burstgridgo` is a Go-native, declarative load testing tool for simulating real-world, protocol-aware workflows(grids) using HCL.
+`burstgridgo` is a Go-native, declarative load testing tool designed for simulating real-world, protocol-aware workflows using HCL.
 
 ## Core Features
-* **✅ Declarative Programming**: Define complex, multi-protocol grids in simple, composable HCL files. 
-* **✅ Unified Configuration**: The loader treats all `.hcl` files from all paths recursively as a single collection. It imports all your definitions. No need imports. 
-* **✅ Ideological Concurrent and .....**: The builds a dependency graph (DAG) from all grids, running independent tasks in parallel, controlling the flow of execution and deps resolution. Dependencies are inferred automatically from variable usage.
-* **✅ Extensible by Design**: Missing a runner? It is a simple to add your own one. Welcome to contribute. is built on a simple Go `Module` interface. Implement your own logic and immediately use it as a module in your grid.
-* **✅ Minimal setup to start**: There is only one depency to start project quickly - docker. If you want more comfortable environment then `make` help you, or for fully local development you need `go` toolkit. Any of them works anyways.
+* **Declarative Workflows**: Define complex, multi-protocol test scenarios (grids) in simple, composable HCL files.
+* **Unified Configuration**: All `.hcl` files are loaded recursively and treated as a single collection. No explicit imports are needed between your local files.
+* **Intelligent Concurrency**: Automatically builds a dependency graph (DAG) from your workflows, running independent tasks in parallel while correctly resolving dependencies.
+* **Extensible by Design**: Easily add new capabilities. The tool is built on a simple Go `Module` interface, making it straightforward to contribute your own runners and assets.
+* **Minimal Setup**: Get started quickly with just Docker. For a full local development environment, `make` and the `go` toolkit are also supported.
 
-## Learn More
-* **Architecture Deep Dive**: [Learn how it works internally.](./internal/Readme.md)
 
-## Example Grid
+
+### Example Grid
 The following grid defines a workflow with multiple dependent HTTP requests.
 ```hcl
 # File: examples/http_concurrent_requests.hcl
@@ -78,129 +73,106 @@ step "print" "wait_all" {
 }
 ```
 
+## Getting Started
 
-## How to run
-Prerequisites: **Docker** and **Make**.
-
-
-### Production (coming soon)
-
-#### docker
-```sh
-docker run .... 
-```
-
-#### compose
-```yaml
-
-```
-
-#### other method
-```
-What can be here?
-```
+### Production (Coming Soon)
+`docker run ...`
+*(Instructions will be added upon the first stable release.)*
 
 ### Development
-To run a grid for development with live-reloading in docker.
+Prerequisites: **Docker** and **Make**.
 
-Note: You need to pull the repository first and run it from repository. Because it injects the code from current folder.
-, use the following command:
-```sh
-# Start local dev environment 
-make dev grid=examples/http_request.hcl
-```
+To run a test grid with live-reloading, clone the repository and execute the following command from the root directory:
 
-### 🧭 Project Roadmap
+`make dev grid=examples/http_request.hcl`
 
-1. ✅ (Jul 27 2025) - Project start
-2. 🚧 (In progress) - POC Preview v0.1-dev
-2. 💡 (Planned) - POC Preview v0.2-dev
-2. 💡 (Planned) - POC Preview v0.3-dev
+This command mounts the current directory into the container, allowing you to edit files and see changes instantly.
 
 ---
 
-### Features
+## Features
+
 *(✅ Implemented | 🚧 In Progress | 💡 Planned)*
 
-* **✅ Foundation for POC**:
-  * ✅ CLI
-  * ✅ HCL loading
-  * ✅ DAG Graph building
-  * ✅ Concurent Execution
-  * ✅ Dependencies
-    * ✅ Fan in
-    * ✅ Fan out
-    * ✅ Inmplicit/Explicit
-  * ✅ HCL Expressions
-  * ✅ Docker image
-  * ✅ Basic modules support
-  * ✅ Type System & Validation
-    * ✅ **Primitives:** `string`, `number`, `bool`
-        * ✅ **Collections:** `list(T)`, `map(T)`, `set(T)` where `T` is one of the primitive types.
-        * ✅ **Objects:**
-            * ✅ **`object({key=type, ...})`**: A structurally-typed object that maps to a Go `struct`.
-            * ✅ **`object({})`**: A generic object that maps to a Go `map[string]any`.
-  * Looger
-* **✅ Extensible Runner/Asset Architecture**: The system for defining stateless `runners` and stateful `assets` via HCL manifests and registering their Go implementations is complete. (See `ADR-001`)
-* **✅ Stateful Resource Management**: The full lifecycle for `resource` blocks—including creation, destruction, and sharing instances between steps via the `uses` block—is implemented.
-* **✅ Pluggable & Unified Configuration**: The configuration loading system has been refactored to be format-agnostic. It now treats all `.hcl` files as a single, unified collection, allowing definitions and instances to be co-located. (See `ADR-007`)
-* **✅ Fail-Fast Execution**: The executor correctly cancels all running tasks as soon as one node fails, ensuring rapid feedback on errors.
-* **✅ Containerized Development Environment**: A multi-stage `Dockerfile` and `Makefile` provide a one-command setup for a live-reloading development environment (`make dev`).
-* **✅ Core Internal Refactoring**: The application has been successfully refactored into decoupled internal packages (`app`, `cli`, `config`, `hcl`, `dag`, `executor`) for improved maintainability. (See `ADR-002`)
-* **✅ Comprehensive Integration Test Suite**: A robust integration test suite is in place, validating core HCL features, concurrency patterns, and error handling. (See `ADR-003`)
-* Release system
-* **💡 External Module System**: Revisit the module system to allow for dynamic, third-party module registration.
-* **💡 Dynamic Workflows & Meta-Arguments**: Full support for HCL features like `count`, `for_each`, and and additional logic (meta-arguments) to create multiple instances of steps and resources from a single configuration block. This includes support for four key dependency patterns:
-    * **All-to-One**: A step can wait for all instances in a collection to complete (e.g., by referencing the collection's `output`).
-    * **One-to-One (Templating)**: A step can be implicitly cloned to run for each instance in a collection (e.g., using an `[each]` reference).
-    * **Specific-to-One**: A step can wait for a single, specific instance from a collection (e.g., via a direct index like `[3]`).
-    * **Any-to-One (Race)**: A step can wait for just the first instance in a collection to complete (e.g., via a special `first_output` attribute).
-* Declarative validation
-  * BLOBS
-  * REGEX
-* **Conditional Execution**: Add an `if` meta-argument to conditionally skip the execution of a step or resource based on a boolean expression.
-* **Concurrency Limiting**: Implement a `concurrency {}` block to limit the number of simultaneous executions within a `count` or `for_each` loop.
-* **Execution Delays**: Introduce `delay_before` and `delay_after` meta-arguments to pause execution for a specified duration before or after a step runs.
-* **Execution Timeouts**: Add a `timeouts {}` block to enforce a maximum execution time for any given step or resource.
-* **Automatic Retries**: Introduce a `retry {}` block to automatically re-run a failed step with a configurable number of attempts and delay.
-* **Global Variables**: Allow passing global variables into a run via CLI flags, such as `-var 'key=value'` and `-var-file="path/to/vars.hcl"`.
-* **Definition Scoping**: Introduce a `scope` meta-argument (`local`, `module`, `global`) on `runner` and `asset` definitions to control their visibility and prevent naming collisions across files and folders.
-* **Sensitive Data Handling(PII)**: Add a `sensitive = true` flag to input and output definitions to ensure secret values (like passwords or API keys) are redacted from all logs.
-* **Insights & Reporting**
-  * **💡 Native OpenTelemetry (OTLP) Export**: Add first-class support for exporting traces and metrics to OTLP-compatible backends like Jaeger or Honeycomb.
-  * **💡 Live Terminal UI (TUI)**: Build an interactive terminal dashboard for a real-time view of test execution, including throughput, latency, and errors. (See `ADR-004`)
-  * **💡 DAG Visualization Command**: Implement a `bggo graph` command to output a visual representation of the execution graph (e.g., in Mermaid or DOT format).
-  * **💡 Prometheus Metrics Endpoint**: Provide an optional `/metrics` endpoint for scraping performance data during a test run.
+* **✅ Core Foundation for POC**:
+  * ✅ CLI Interface
+  * ✅ HCL Configuration Loading
+  * ✅ DAG Graph Building & Execution
+  * ✅ Concurrent Execution Engine
+  * ✅ Implicit & Explicit Dependencies (Fan-in / Fan-out)
+  * ✅ HCL Expression Support
+  * ✅ Basic Module & Runner Support
+  * ✅ Docker Image for Distribution
+* **✅ Type System & Validation**:
+  * ✅ **Primitives:** `string`, `number`, `bool`
+  * ✅ **Collections:** `list(T)`, `map(T)`, `set(T)`
+  * ✅ **Objects:** Structurally-typed `object({key=type, ...})` and generic `object({})`
+* **✅ Pluggable & Unified Configuration**:
+  * ✅ Extensible Runner/Asset architecture for stateless and stateful operations. (See `ADR-001`)
+  * ✅ Format-agnostic configuration system treats all `.hcl` files as a single collection. (See `ADR-007`)
+* **✅ Stateful Resource Management**:
+  * ✅ Full lifecycle for `resource` blocks, including creation, destruction, and instance sharing via the `uses` block.
+* **✅ Execution Engine**:
+  * ✅ Fail-Fast Execution correctly cancels all running tasks as soon as one node fails.
+* **✅ Development & CI/CD**:
+  * ✅ Containerized development environment with live-reloading.
+  * ✅ Core internal packages refactored for maintainability (`app`, `cli`, `config`, `hcl`, `dag`, `executor`). (See `ADR-002`)
+  * ✅ Comprehensive integration test suite validating core features and concurrency patterns. (See `ADR-003`)
+* **💡 Dynamic Workflows & Meta-Arguments**:
+  * 💡 Full support for HCL features like `count` and `for_each` to create multiple instances from a single block.
+  * 💡 Advanced dependency patterns for collections: All-to-One, One-to-One, Specific-to-One, and Any-to-One (Race).
+* **💡 Execution Controls**:
+  * 💡 **Conditional Execution**: `if` meta-argument to conditionally skip steps.
+  * 💡 **Concurrency Limiting**: `concurrency {}` block to control parallelism within loops.
+  * 💡 **Delays & Timeouts**: `delay_before`, `delay_after`, and `timeouts {}` blocks.
+  * 💡 **Automatic Retries**: `retry {}` block to re-run failed steps with configurable attempts and backoff.
+* **💡 Configuration & Usability**:
+  * 💡 **Global Variables**: Pass variables via CLI flags (`-var 'key=value'`, `-var-file="vars.hcl"`).
+  * 💡 **Definition Scoping**: A `scope` meta-argument (`local`, `module`, `global`) to control visibility and prevent name collisions.
+  * 💡 **Sensitive Data Handling**: A `sensitive = true` flag to redact secret values from all logs.
+* **💡 Insights & Reporting**:
+  * 💡 **Native OpenTelemetry (OTLP) Export**: First-class support for exporting traces and metrics.
+  * 💡 **Live Terminal UI (TUI)**: An interactive terminal dashboard for real-time test monitoring. (See `ADR-004`)
+  * 💡 **DAG Visualization**: A `bggo graph` command to output a visual graph (Mermaid or DOT format).
+  * 💡 **Prometheus Metrics**: An optional `/metrics` endpoint for scraping performance data.
+* **🚧 Logging**: Structured Logger Implementation.
+* **💡 Module System**:
+  * 💡 **External Module System**: Revisit the module system to allow for dynamic, third-party module registration.
+  * 💡 **Release System**: Streamlined process for versioning and releasing the application.
 
+## Modules
+* **Utilities**:
+  * ✅ `env_vars`
+  * ✅ `print`
+  * 💡 `ls dir`
+  * 💡 `execute script`
+  * 💡 `cmd`: A runner to execute local shell commands, capturing stdout, stderr, and the exit code.
+* **HTTP**:
+  * ✅ Basic `http_client` asset and `http_request` runner.
+  * 💡 Add support for custom `headers`, request `body`, `query_params`, and `form_data`.
+  * 💡 Introduce helpers for common authentication schemes (e.g., Bearer Token, Basic Auth).
+* **Socket.IO**:
+  * ✅ A native client for Socket.IO interactions.
+* **S3**:
+  * 💡 Basic file upload runner.
+  * 💡 Expand to support standard S3 API actions (`put_object`, `get_object`) using credentials.
+* **gRPC**:
+  * 💡 A dedicated runner for making unary and streaming gRPC calls.
+* **WebSockets**:
+  * 💡 A native runner and asset for interacting with standard WebSocket services.
+* **Databases & Caches**:
+  * 💡 `redis`: A runner and asset for interacting with a Redis server.
+  * 💡 `postgres`: A runner and asset for executing queries against a PostgreSQL database.
+  * 💡 `mongo`: A runner and asset for executing commands against a MongoDB database.
+* **Message Queues**:
+  * 💡 `rabbitmq`: A runner and asset for publishing and consuming messages from RabbitMQ.
+  * 💡 `kafka`: A runner and asset for producing and consuming messages from Kafka topics.
+* **Integrations & Servers**:
+  * 💡 `slack`: A runner for sending notifications to a Slack webhook.
+  * 💡 General WebHook server to control grid execution.
+  * 💡 `MCP Server`
 
-* **Modules**
-  * **Utilities**:
-    * ✅ `env_vars`
-    * ✅ `print`
-  * **✅ HTTP**: http client
-    * **💡 `http_request` Runner**:
-    * ✅ Basic http client
-    * Add support for custom `headers`, request `body`, `query_params`, and `form_data`.
-    * Introduce helpers for common authentication schemes (e.g., Bearer Token, Basic Auth).
-  * **✅ Socket.IO**: Socket.io client
-  * **💡 S3**: s3 file upload
-    * **💡 `s3` basic file upload**:
-    * Expand beyond pre-signed URLs to support standard S3 API actions (`put_object`, `get_object`, `delete_object`, `list_objects`) using credentials.
-    * Refactor to use the shared `http_client` asset for connection reuse.
-  * General WebHook server to control grids execution (from Slack)
-  * ls dir
-  * MCP Server
-  * Execute script
-  * **💡 gRPC**: A dedicated runner for making unary and streaming gRPC calls.
-  * **💡 WebSockets**: A native runner and asset for interacting with standard WebSocket services (distinct from Socket.IO).
-  * **💡 `redis`**: A runner and asset for interacting with a Redis server (GET, SET, PUBLISH, etc.).
-  * **💡 `postgres`**: A runner and asset for executing queries against a PostgreSQL database.
-  * **💡 `mongo`**: A runner and asset for executing commands against a MongoDB database.
-  * **💡 `cmd`**: A runner to execute local shell commands, capturing stdout, stderr, and the exit code.
-  * **💡 `slack`**: A runner for sending notifications to a Slack webhook.
-  * **💡 `rabbitmq`**: A runner and asset for publishing and consuming messages from RabbitMQ.
-  * **💡 `kafka`**: A runner and asset for producing and consuming messages from Kafka topics.
+## Learn More & Contribute
 
-## Learn More
 * **Architecture Deep Dive**: [Learn how `burstgridgo` works internally.](./internal/Readme.md)
-* **Contributing Guide**: [Find out how you can help.](./CONTRIBUTING.md)
+* **Contributing Guide**: [Find out how you can help make this project better.](./CONTRIBUTING.md)
