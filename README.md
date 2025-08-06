@@ -56,19 +56,19 @@ step "http_request" "httpbin" {
   }
 
   arguments {
-    url = "https://httpbin.org/get?$request={count.index}"
+    url = "https://httpbin.org/get?$request={index}"
   }
 }
 
 step "print" "wait_each" {
   arguments {
-    input = "Request=${count.index} code=${http_request.httpbin[each].output.status_code}"
+    input = "Request=${index} code=${http_request.httpbin[each].output.status_code}"
   }
 }
 
 step "print" "wait_all" {
   arguments {
-    input = "We made ${count(http_request.httpbin.output)} requests!"
+    input = "We made ${length(http_request.httpbin)} requests!"
   }
 }
 ```
