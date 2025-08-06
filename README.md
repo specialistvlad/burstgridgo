@@ -100,7 +100,6 @@ This command mounts the current directory into the container, allowing you to ed
   * ✅ DAG Graph Building & Execution
   * ✅ Concurrent Execution Engine
   * ✅ Implicit & Explicit Dependencies (Fan-in / Fan-out)
-  * ✅ HCL Expression Support
   * ✅ Basic Module & Runner Support
   * ✅ Docker Image for Distribution
 * **✅ Type System & Validation**:
@@ -118,6 +117,10 @@ This command mounts the current directory into the container, allowing you to ed
   * ✅ Containerized development environment with live-reloading.
   * ✅ Core internal packages refactored for maintainability (`app`, `cli`, `config`, `hcl`, `dag`, `executor`). (See `ADR-002`)
   * ✅ Comprehensive integration test suite validating core features and concurrency patterns. (See `ADR-003`)
+* **Website**:
+  * Landing page
+  * Documentation
+  * Auto publishing documentation
 * **💡 Dynamic Workflows & Meta-Arguments**:
   * 💡 Full support for HCL features like `count` and `for_each` to create multiple instances from a single block.
   * 💡 Advanced dependency patterns for collections: All-to-One, One-to-One, Specific-to-One, and Any-to-One (Race).
@@ -126,10 +129,11 @@ This command mounts the current directory into the container, allowing you to ed
   * 💡 **Concurrency Limiting**: `concurrency {}` block to control parallelism within loops.
   * 💡 **Delays & Timeouts**: `delay_before`, `delay_after`, and `timeouts {}` blocks.
   * 💡 **Automatic Retries**: `retry {}` block to re-run failed steps with configurable attempts and backoff.
+  * 💡 **Execution cache**: If stateless(no side effects) step has input parameters same as one in the cache before - it will not be executed, but instead output will be taken from the cache.
 * **💡 Configuration & Usability**:
-  * 💡 **Global Variables**: Pass variables via CLI flags (`-var 'key=value'`, `-var-file="vars.hcl"`).
-  * 💡 **Definition Scoping**: A `scope` meta-argument (`local`, `module`, `global`) to control visibility and prevent name collisions.
+  * 💡 **Definition Scoping**: A `scope` meta-argument (`local`, `module`, `workspace`, `global`) to control visibility and prevent name collisions.
   * 💡 **Sensitive Data Handling**: A `sensitive = true` flag to redact secret values from all logs.
+  * 💡 **versioning system**: inside hcl
 * **💡 Insights & Reporting**:
   * 💡 **Native OpenTelemetry (OTLP) Export**: First-class support for exporting traces and metrics.
   * 💡 **Live Terminal UI (TUI)**: An interactive terminal dashboard for real-time test monitoring. (See `ADR-004`)
@@ -139,6 +143,11 @@ This command mounts the current directory into the container, allowing you to ed
 * **💡 Module System**:
   * 💡 **External Module System**: Revisit the module system to allow for dynamic, third-party module registration.
   * 💡 **Release System**: Streamlined process for versioning and releasing the application.
+* **HCL features**
+  * ✅ **Expression Support**
+  * 💡 **Splat operator support**
+  * 💡 **Variables support**
+  * 💡 **Global Variables**: Pass variables via CLI flags (`-var 'key=value'`, `-var-file="vars.hcl"`), `-var-file="vars.json"`).
 
 ## Modules
 * **Utilities**:
