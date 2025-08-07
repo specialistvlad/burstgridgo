@@ -1,7 +1,7 @@
 # ADR-012: Step Instancing with `count`
 
 **Date**: 2025-08-06
-**Status**: Draft
+**Status**: Implementation
 
 ## Context
 

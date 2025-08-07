@@ -122,7 +122,7 @@ This command mounts the current directory into the container, allowing you to ed
   * Documentation
   * Auto publishing documentation
 * **💡 Dynamic Workflows & Meta-Arguments**:
-  * 💡 Full support for HCL features like `count` and `for_each` to create multiple instances from a single block.
+  * 🚧 Full support for HCL features like `count` and `for_each` to create multiple instances from a single block.
   * 💡 Advanced dependency patterns for collections: All-to-One, One-to-One, Specific-to-One, and Any-to-One (Race).
 * **💡 Execution Controls**:
   * 💡 **Conditional Execution**: `if` meta-argument to conditionally skip steps.
