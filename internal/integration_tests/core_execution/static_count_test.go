@@ -10,34 +10,26 @@ import (
 	"github.com/vk/burstgridgo/internal/testutil"
 )
 
-// TestCLI_MergesHCL_FromDirectoryPath validates that the loader correctly
-// discovers and merges all HCL files from a given directory path.
-func TestCLI_MergesHCL_FromDirectoryPath(t *testing.T) {
+// TestCoreExecution_Count_Static validates that a step with a static `count`
+// meta-argument is expanded into N distinct nodes in the graph and all are executed.
+func TestCoreExecution_Count_Static(t *testing.T) {
 	t.Parallel()
 
 	// --- Arrange ---
 	manifestHCL := `
 		runner "print" {
-			lifecycle {
-				on_run = "OnRunPrint"
-			}
+			lifecycle { on_run = "OnRunPrint" }
 		}
 	`
-	hclFileA := `
-		step "print" "step_A" {
+	gridHCL := `
+		step "print" "A" {
+			count = 3
 			arguments {}
 		}
 	`
-	hclFileB := `
-		step "print" "step_B" {
-			arguments {}
-		}
-	`
-	// The harness will create these in the same directory structure.
 	files := map[string]string{
 		"modules/print/manifest.hcl": manifestHCL,
-		"grids/a.hcl":                hclFileA,
-		"grids/b.hcl":                hclFileB,
+		"main.hcl":                   gridHCL,
 	}
 
 	mockModule := &testutil.SimpleModule{
@@ -51,14 +43,15 @@ func TestCLI_MergesHCL_FromDirectoryPath(t *testing.T) {
 	}
 
 	// --- Act ---
-	// The harness configures the app to load from the root temporary
-	// directory, discovering the module manifest and all grid files.
 	result := testutil.RunIntegrationTest(t, files, mockModule)
 
 	// --- Assert ---
 	require.NoError(t, result.Err, "app.Run() returned an unexpected error")
 
-	// Check that both steps, from both files, were executed using the resilient helper.
-	testutil.AssertStepRan(t, result, "print", "step_A")
-	testutil.AssertStepRan(t, result, "print", "step_B")
+	// Note: We're temporarily using direct `require.Contains` here.
+	// In a future step, we can enhance our `testutil.AssertStepRan` helper
+	// to be more flexible for these indexed checks.
+	require.Contains(t, result.LogOutput, "step=step.print.A[0]", "log for instance [0] not found")
+	require.Contains(t, result.LogOutput, "step=step.print.A[1]", "log for instance [1] not found")
+	require.Contains(t, result.LogOutput, "step=step.print.A[2]", "log for instance [2] not found")
 }

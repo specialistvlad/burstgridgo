@@ -5,6 +5,16 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// InstancingMode determines how a step's instances are addressed and behave.
+type InstancingMode int
+
+const (
+	// ModeSingular is the default for steps that do not use `count` or `for_each`.
+	ModeSingular InstancingMode = iota
+	// ModeInstanced is activated when `count` or `for_each` is present.
+	ModeInstanced
+)
+
 // Model is the unified, format-agnostic representation of the entire
 // application configuration, including all modules and the execution grid.
 type Model struct {
@@ -27,6 +37,8 @@ type Step struct {
 	Arguments  map[string]hcl.Expression
 	Uses       map[string]hcl.Expression
 	DependsOn  []string
+	Count      hcl.Expression
+	Instancing InstancingMode
 }
 
 // Resource is the format-agnostic representation of a `resource` block.

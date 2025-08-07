@@ -19,11 +19,12 @@ type UsesBlock struct {
 // Step represents a `step` block from a user's grid file. It is a runnable
 // instance of a defined runner.
 type Step struct {
-	RunnerType string     `hcl:"runner_type,label"`
-	Name       string     `hcl:"instance_name,label"`
-	Arguments  *StepArgs  `hcl:"arguments,block"`
-	Uses       *UsesBlock `hcl:"uses,block"`
-	DependsOn  []string   `hcl:"depends_on,optional"`
+	RunnerType string         `hcl:"runner_type,label"`
+	Name       string         `hcl:"instance_name,label"`
+	Count      hcl.Expression `hcl:"count,optional"` // Added field
+	Arguments  *StepArgs      `hcl:"arguments,block"`
+	Uses       *UsesBlock     `hcl:"uses,block"`
+	DependsOn  []string       `hcl:"depends_on,optional"`
 }
 
 // Resource represents a `resource` block from a user's grid file. It is a

@@ -1,5 +1,5 @@
 // This file contains the logic for translating HCL schema structs (from
-// hcl_schema.go) into the format-agnostic configuration model defined in the
+// hcl_go) into the format-agnostic configuration model defined in the
 // config package.
 
 package hcl
@@ -8,48 +8,30 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/schema"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/vk/burstgridgo/internal/ctxlog"
 )
 
-// translateInputDefinition is a helper that processes a single HCL input
-// block, handling its default value and type parsing.
-func translateInputDefinition(ctx context.Context, in *schema.InputDefinition, ownerKind, ownerName string) (*config.InputDefinition, error) {
-	var defaultVal *cty.Value
-	var isOptional bool
-
-	if in.Default != nil {
-		val, diags := in.Default.Value(nil)
-		if diags.HasErrors() {
-			return nil, fmt.Errorf("invalid default value for input '%s' in %s '%s': %w", in.Name, ownerKind, ownerName, diags)
-		}
-		if !val.IsNull() {
-			defaultVal = &val
-			isOptional = true
-		}
-	}
-
-	parsedType, err := typeExprToCtyType(ctx, in.Type)
-	if err != nil {
-		return nil, fmt.Errorf("in %s '%s', input '%s': %w", ownerKind, ownerName, in.Name, err)
-	}
-
-	return &config.InputDefinition{
-		Name:        in.Name,
-		Type:        parsedType,
-		Description: in.Description,
-		Default:     defaultVal,
-		Optional:    isOptional,
-	}, nil
-}
-
 // translateStep converts the HCL-specific step schema into the agnostic model.
-func (l *Loader) translateStep(s *schema.Step) *config.Step {
+func (l *Loader) translateStep(ctx context.Context, s *Step) *config.Step {
+	logger := ctxlog.FromContext(ctx).With("step_runner", s.RunnerType, "step_name", s.Name)
+	ctx = ctxlog.WithLogger(ctx, logger)
+
+	logger.Debug("Translating HCL step to internal config model.")
+
+	instancingMode := config.ModeSingular
+	if isExprDefined(ctx, s.Count, "count") {
+		logger.Debug("`count` attribute is defined. Marking step as instanced.")
+		instancingMode = config.ModeInstanced
+	} else {
+		logger.Debug("`count` attribute is not defined. Marking step as singular.")
+	}
+
 	return &config.Step{
 		RunnerType: s.RunnerType,
 		Name:       s.Name,
+		Count:      s.Count,
+		Instancing: instancingMode,
 		Arguments:  l.extractBodyAttributes(s.Arguments),
 		Uses:       l.extractBodyAttributes(s.Uses),
 		DependsOn:  s.DependsOn,
@@ -57,7 +39,7 @@ func (l *Loader) translateStep(s *schema.Step) *config.Step {
 }
 
 // translateResource converts the HCL-specific resource schema into the agnostic model.
-func (l *Loader) translateResource(s *schema.Resource) *config.Resource {
+func (l *Loader) translateResource(s *Resource) *config.Resource {
 	return &config.Resource{
 		AssetType: s.AssetType,
 		Name:      s.Name,
@@ -67,7 +49,7 @@ func (l *Loader) translateResource(s *schema.Resource) *config.Resource {
 }
 
 // translateRunnerDefinition converts the HCL-specific runner schema into the agnostic model.
-func (l *Loader) translateRunnerDefinition(ctx context.Context, s *schema.RunnerDefinition) (*config.RunnerDefinition, error) {
+func (l *Loader) translateRunnerDefinition(ctx context.Context, s *RunnerDefinition) (*config.RunnerDefinition, error) {
 	r := &config.RunnerDefinition{
 		Type:        s.Type,
 		Description: s.Description,
@@ -109,7 +91,7 @@ func (l *Loader) translateRunnerDefinition(ctx context.Context, s *schema.Runner
 }
 
 // translateAssetDefinition converts the HCL-specific asset schema into the agnostic model.
-func (l *Loader) translateAssetDefinition(ctx context.Context, s *schema.AssetDefinition) (*config.AssetDefinition, error) {
+func (l *Loader) translateAssetDefinition(ctx context.Context, s *AssetDefinition) (*config.AssetDefinition, error) {
 	a := &config.AssetDefinition{
 		Type:        s.Type,
 		Description: s.Description,
@@ -140,37 +122,4 @@ func (l *Loader) translateAssetDefinition(ctx context.Context, s *schema.AssetDe
 		}
 	}
 	return a, nil
-}
-
-func (l *Loader) extractBodyAttributes(block interface{}) map[string]hcl.Expression {
-	if block == nil {
-		return nil
-	}
-	var body hcl.Body
-	switch b := block.(type) {
-	case *schema.StepArgs:
-		if b == nil {
-			return nil
-		}
-		body = b.Body
-	case *schema.UsesBlock:
-		if b == nil {
-			return nil
-		}
-		body = b.Body
-	default:
-		return nil
-	}
-	if body == nil {
-		return nil
-	}
-	attrs, _ := body.JustAttributes()
-	if attrs == nil {
-		return nil
-	}
-	exprMap := make(map[string]hcl.Expression)
-	for name, attr := range attrs {
-		exprMap[name] = attr.Expr
-	}
-	return exprMap
 }

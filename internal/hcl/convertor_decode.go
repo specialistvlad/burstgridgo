@@ -20,6 +20,16 @@ func (c *Converter) decode(ctx context.Context, val cty.Value, manifestType cty.
 	goType := goPtr.Type()
 	logger := ctxlog.FromContext(ctx).With("go_kind", goType.Kind().String())
 
+	// If the target field in the Go struct is of type cty.Value, we don't need
+	// to decode it further. We just assign the value directly.
+	if goType == reflect.TypeOf(cty.Value{}) {
+		logger.Debug("Target is cty.Value, performing direct assignment.")
+		if val.IsKnown() { // Ensure we don't assign an unknown value directly
+			goPtr.Set(reflect.ValueOf(val))
+		}
+		return nil
+	}
+
 	if !val.IsKnown() || val.IsNull() {
 		logger.Debug("Skipping decode for null or unknown value.")
 		return nil // Nothing to decode.

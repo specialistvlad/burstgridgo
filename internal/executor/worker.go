@@ -2,7 +2,6 @@ package executor
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/dag"
@@ -65,17 +64,4 @@ func (e *Executor) worker(ctx context.Context, readyChan chan *dag.Node, cancel 
 		e.wg.Done()
 	}
 	logger.Debug("Worker finished.", "workerID", workerID)
-}
-
-// skipDependents recursively marks all downstream nodes as failed and decrements the WaitGroup.
-func (e *Executor) skipDependents(ctx context.Context, node *dag.Node) {
-	logger := ctxlog.FromContext(ctx)
-	for _, dependent := range node.Dependents {
-		err := fmt.Errorf("skipped due to upstream failure of '%s'", node.ID)
-		wasSkipped := dependent.Skip(err, &e.wg)
-		if wasSkipped {
-			logger.Warn("Skipping dependent node due to upstream failure.", "nodeID", dependent.ID, "dependency", node.ID)
-			e.skipDependents(ctx, dependent)
-		}
-	}
 }

@@ -1,4 +1,4 @@
-package hcl
+package integration_tests
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/vk/burstgridgo/internal/config"
+	"github.com/vk/burstgridgo/internal/hcl"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -51,7 +52,7 @@ func TestLoader_Load(t *testing.T) {
 	}
 
 	// --- Act ---
-	loader := NewLoader()
+	loader := hcl.NewLoader()
 	model, converter, err := loader.Load(context.Background(), gridPath, filepath.Join(tempDir, "modules"))
 
 	// --- Assert ---

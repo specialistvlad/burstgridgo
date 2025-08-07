@@ -1,4 +1,4 @@
-package dag
+package integration_tests
 
 import (
 	"context"
@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/vk/burstgridgo/internal/config"
+	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
 func TestBuild_CycleDetection(t *testing.T) {
-	t.Parallel() // Mark this test as safe to run in parallel.
+	t.Parallel()
 
 	// Arrange: Create steps with a circular dependency (A -> B -> A)
 	// using the new format-agnostic config types.
@@ -35,7 +36,7 @@ func TestBuild_CycleDetection(t *testing.T) {
 	}
 
 	// Act: Attempt to create a graph, passing the new model.
-	_, err := Build(context.Background(), model, registry.New())
+	_, err := dag.Build(context.Background(), model, registry.New())
 
 	// Assert: Check that an error indicating a cycle was returned.
 	if err == nil {

@@ -1,4 +1,4 @@
-package cli
+package integration_tests
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/app"
+	"github.com/vk/burstgridgo/internal/cli"
 )
 
 func TestParse(t *testing.T) {
@@ -106,12 +107,12 @@ func TestParse(t *testing.T) {
 			out := &bytes.Buffer{}
 
 			// --- Act ---
-			appConfig, shouldExit, err := Parse(tc.args, out)
+			appConfig, shouldExit, err := cli.Parse(tc.args, out)
 
 			// --- Assert ---
 			if tc.expectErr {
 				require.Error(t, err)
-				_, isExitError := err.(*ExitError)
+				_, isExitError := err.(*cli.ExitError)
 				require.True(t, isExitError, "Expected error to be of type ExitError")
 				return // End test here if an error is expected
 			}

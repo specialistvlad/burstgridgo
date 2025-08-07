@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/schema"
 )
 
 // Loader is the HCL-specific implementation of the config.Loader interface.
@@ -24,11 +23,11 @@ func NewLoader() *Loader {
 
 // fileRoot is a struct used to decode all possible top-level blocks from any file.
 type fileRoot struct {
-	Runners   []*schema.RunnerDefinition `hcl:"runner,block"`
-	Assets    []*schema.AssetDefinition  `hcl:"asset,block"`
-	Steps     []*schema.Step             `hcl:"step,block"`
-	Resources []*schema.Resource         `hcl:"resource,block"`
-	Remain    hcl.Body                   `hcl:",remain"`
+	Runners   []*RunnerDefinition `hcl:"runner,block"`
+	Assets    []*AssetDefinition  `hcl:"asset,block"`
+	Steps     []*Step             `hcl:"step,block"`
+	Resources []*Resource         `hcl:"resource,block"`
+	Remain    hcl.Body            `hcl:",remain"`
 }
 
 // Load orchestrates the entire HCL configuration loading process. It is
@@ -79,7 +78,7 @@ func (l *Loader) Load(ctx context.Context, paths ...string) (*config.Model, conf
 			model.Assets[def.Type] = def
 		}
 		for _, step := range root.Steps {
-			model.Grid.Steps = append(model.Grid.Steps, l.translateStep(step))
+			model.Grid.Steps = append(model.Grid.Steps, l.translateStep(ctx, step))
 		}
 		for _, resource := range root.Resources {
 			model.Grid.Resources = append(model.Grid.Resources, l.translateResource(resource))
