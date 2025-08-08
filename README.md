@@ -122,7 +122,10 @@ This command mounts the current directory into the container, allowing you to ed
   * Documentation
   * Auto publishing documentation
 * **💡 Dynamic Workflows & Meta-Arguments**:
-  * 🚧 Full support for HCL features like `count` and `for_each` to create multiple instances from a single block.
+  * ✅ Static `count` parameter (resolution of the DAG at build time phase)
+  * 🚧 Dynamic `count` parameter (resolution of the DAG in runtime)
+  * 🚧 Static `for_each` parameter (resolution of the DAG at build time phase)
+  * 🚧 Dynamic `for_each` parameter (resolution of the DAG in runtime)
   * 💡 Advanced dependency patterns for collections: All-to-One, One-to-One, Specific-to-One, and Any-to-One (Race).
 * **💡 Execution Controls**:
   * 💡 **Conditional Execution**: `if` meta-argument to conditionally skip steps.
@@ -130,6 +133,11 @@ This command mounts the current directory into the container, allowing you to ed
   * 💡 **Delays & Timeouts**: `delay_before`, `delay_after`, and `timeouts {}` blocks.
   * 💡 **Automatic Retries**: `retry {}` block to re-run failed steps with configurable attempts and backoff.
   * 💡 **Execution cache**: If stateless(no side effects) step has input parameters same as one in the cache before - it will not be executed, but instead output will be taken from the cache.
+* **Storage backends**
+  * 💡 **In memory**
+  * 💡 **Redis**
+* **Distributed running**
+  * 💡 **Multi instance**
 * **💡 Configuration & Usability**:
   * 💡 **Definition Scoping**: A `scope` meta-argument (`local`, `module`, `workspace`, `global`) to control visibility and prevent name collisions.
   * 💡 **Sensitive Data Handling**: A `sensitive = true` flag to redact secret values from all logs.
@@ -142,6 +150,7 @@ This command mounts the current directory into the container, allowing you to ed
 * **🚧 Logging**: Structured Logger Implementation.
 * **💡 Module System**:
   * 💡 **External Module System**: Revisit the module system to allow for dynamic, third-party module registration.
+  * 💡 **Remote communication interface**: To be able to isolate modules from the code.
   * 💡 **Release System**: Streamlined process for versioning and releasing the application.
 * **HCL features**
   * ✅ **Expression Support**
