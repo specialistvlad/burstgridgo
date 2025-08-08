@@ -73,7 +73,7 @@ This plan outlines a safe, incremental approach to implementing the `count` feat
 * **Verification:** All existing integration tests must pass.
 
 #### Step 1.2: Create an "Expansion" Seam in the DAG Builder
-> **Status: ⚠️ Deviated.** This step was not performed as planned. Instead of creating a trivial seam, the implementation jumped ahead and combined this refactoring with the feature logic from Phase 3.1.
+> **Status: ✅ Implemented.** Skipped and then combined this refactoring with the feature logic from Phase 3.1.
 
 * **Why:** To create a dedicated entry point for the future one-to-many expansion logic, separating it from the main graph construction code.
 * **What:**
@@ -147,18 +147,39 @@ This plan outlines a safe, incremental approach to implementing the `count` feat
 #### Step 3.4: Implement Dynamic `count`
 > **Status: ❌ Not Implemented.** The entire dynamic evaluation path is missing.
 
-* **Why:** to support `count` values that depend on the output of other steps.
-* **What:**
-    1.  Update `internal/dag/build.go` to create a special "unexpanded" placeholder node for steps with a dynamic `count`.
-    > **Note:** This is not implemented. `internal/dag/build.go` incorrectly treats a step with a dynamic count as a single instance.
-    2.  Update `internal/executor/worker.go` to recognize these placeholders, evaluate the `count` expression at runtime, and dynamically expand the step into its final nodes.
-    > **Note:** This is not implemented. The executor is unaware of placeholders or runtime expansion.
+* **Why:** To support `count` values that depend on the output of other steps.
+* **What:** This will be implemented in three sub-phases to ensure a safe, incremental rollout.
 
-#### Testing Strategy for Phase 3
-> **Status: ⚠️ Partially Implemented.** The core referencing rules are now well-tested, but tests for dynamic `count` are still pending.
+    * **Phase 3.4a: DAG - Introduce Placeholder Nodes**
+        * **Goal:** Modify the DAG builder to recognize steps with a dynamic `count` and represent them as a single, unexpanded "placeholder" node in the graph. This fixes the immediate bug where they are treated as a single instance.
+        * **1. Update Step Expansion Logic:**
+            * **Where:** `internal/dag/utils.go`
+            * **What:** In the `expandStep` function, when a `count` expression is dynamic (i.e., `!val.IsKnown()`), do **not** return a single-element slice. Instead, return the single step config and a flag indicating it is dynamic.
+        * **2. Add a Placeholder State to the Node:**
+            * **Where:** `internal/dag/dag.go`
+            * **What:** Add a new field to the `dag.Node` struct, such as `IsPlaceholder bool`. This allows the executor to explicitly identify these special nodes.
+        * **3. Create Placeholder Nodes:**
+            * **Where:** `internal/dag/nodes.go`
+            * **What:** When `createNodes` receives a step marked as dynamic from `expandStep`, it should create a single `Node` and set `IsPlaceholder = true`. The dependencies for this node will be all variables from its `arguments` block *and* its `count` expression, ensuring it only runs after its `count` value is available.
 
-* **New Features:** A genuinely new capability, such as the initial static `count` or the dynamic `count` feature, justifies a new test file (e.g., `integration_tests/core_execution/static_count_test.go`, `TestCoreExecution_Count_Dynamic`).
-* **Feature Enhancements:** An enhancement to an existing feature, such as adding `count.index` support or `depends_on` with an index, should expand the existing relevant test file with new assertions.
-    > **Note:** A new test, `integration_tests/core_execution/instancing_test.go`, has been added to validate successful indexed dependency resolution.
-* **Error Cases:** A test that validates a failure condition, such as attempting shorthand access on an instanced step, justifies a new, focused test in the `integration_tests/error_handling/` test suite.
-    > **Note:** A new test, `integration_tests/error_handling/ambiguous_dependency_test.go`, has been added to validate failure cases for both implicit and explicit ambiguous dependencies.
+    * **Phase 3.4b: Executor - Contained Runtime Expansion**
+        * **Goal:** Teach the executor to handle these new placeholder nodes by evaluating the `count` at runtime and executing the instances in a contained way, without mutating the main graph.
+        * **1. Modify the Worker Logic:**
+            * **Where:** `internal/executor/worker.go`
+            * **What:** The worker needs a new logic path. When it picks up a node where `IsPlaceholder == true`, it will not execute it directly. Instead, it will perform the following steps.
+        * **2. Evaluate `count` at Runtime:**
+            * **What:** The worker will first build an evaluation context for the placeholder node to resolve the `count` expression to an integer, `N`.
+        * **3. Execute Instances Serially or in a Sub-Pool:**
+            * **What:** The worker will loop from `i = 0` to `N-1`. In each iteration, it will:
+                * Create a temporary "instance context" with the correct `count.index` injected.
+                * Execute the step's logic (decode arguments, call the handler) using this temporary context.
+                * Collect the output from the instance.
+            * **Why:** This "contained expansion" model is much safer than dynamically adding nodes to the main graph. It avoids complex, concurrent graph mutations and keeps the core execution flow simple and robust.
+
+    * **Phase 3.4c: Executor - Output Aggregation**
+        * **Goal:** Ensure the collected results of the dynamic instances are correctly exposed to the rest of the graph.
+        * **1. Aggregate Outputs:**
+            * **Where:** `internal/executor/worker.go`
+            * **What:** After the loop finishes, the worker will aggregate the outputs from all `N` instances into a single list (`[]cty.Value`).
+        * **2. Set Placeholder Node Output:**
+            * **What:** This final list of outputs becomes the `Output` of the main placeholder node. This makes the entire result available to any downstream steps that depend on the placeholder, fulfilling the contract of the instanced step.
