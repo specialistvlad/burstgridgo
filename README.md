@@ -68,7 +68,7 @@ step "print" "wait_each" {
 
 step "print" "wait_all" {
   arguments {
-    input = "We made ${length(http_request.httpbin)} requests!"
+    input = "We made ${length(http_request.httpbin[*].output)} requests!"
   }
 }
 ```
