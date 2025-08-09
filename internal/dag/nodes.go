@@ -14,19 +14,39 @@ import (
 func createNodes(ctx context.Context, grid *config.Grid, graph *Graph) {
 	logger := ctxlog.FromContext(ctx)
 	for _, s := range grid.Steps {
-		expandedSteps := expandStep(s)
-		for i, expandedS := range expandedSteps {
-			id := fmt.Sprintf("step.%s.%s[%d]", expandedS.RunnerType, expandedS.Name, i)
+		expandedSteps, isPlaceholder := expandStep(s)
+
+		if isPlaceholder {
+			// This is a dynamic step that will be expanded at runtime. Create a
+			// single placeholder node with a non-indexed ID.
+			id := fmt.Sprintf("step.%s.%s", s.RunnerType, s.Name)
 			if _, exists := graph.Nodes[id]; exists {
 				logger.Warn("Duplicate step definition found, it will be overwritten.", "id", id)
 			}
 			graph.Nodes[id] = &Node{
-				ID:         id,
-				Name:       expandedS.Name,
-				Type:       StepNode,
-				StepConfig: expandedS,
-				Deps:       make(map[string]*Node),
-				Dependents: make(map[string]*Node),
+				ID:            id,
+				Name:          s.Name,
+				Type:          StepNode,
+				IsPlaceholder: true, // Mark this as a placeholder
+				StepConfig:    s,    // Use the original, unexpanded config
+				Deps:          make(map[string]*Node),
+				Dependents:    make(map[string]*Node),
+			}
+		} else {
+			// This is a static expansion.
+			for i, expandedS := range expandedSteps {
+				id := fmt.Sprintf("step.%s.%s[%d]", expandedS.RunnerType, expandedS.Name, i)
+				if _, exists := graph.Nodes[id]; exists {
+					logger.Warn("Duplicate step definition found, it will be overwritten.", "id", id)
+				}
+				graph.Nodes[id] = &Node{
+					ID:         id,
+					Name:       expandedS.Name,
+					Type:       StepNode,
+					StepConfig: expandedS,
+					Deps:       make(map[string]*Node),
+					Dependents: make(map[string]*Node),
+				}
 			}
 		}
 	}
@@ -58,6 +78,10 @@ func linkNodes(ctx context.Context, model *config.Model, graph *Graph, r *regist
 		var expressions []hcl.Expression
 
 		if node.Type == StepNode {
+			// For placeholders, we must consider variables in the `count` expression for dependency linking.
+			if node.IsPlaceholder && node.StepConfig.Count != nil {
+				expressions = append(expressions, node.StepConfig.Count)
+			}
 			dependsOn = node.StepConfig.DependsOn
 			for _, expr := range node.StepConfig.Arguments {
 				expressions = append(expressions, expr)

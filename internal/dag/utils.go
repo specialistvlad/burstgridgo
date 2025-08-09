@@ -135,24 +135,25 @@ func validateOutputReference(traversal hcl.Traversal, depNode *Node, r *registry
 	return fmt.Errorf("reference to undeclared output %q on step %q", outputName, depNode.ID)
 }
 
-func expandStep(s *config.Step) []*config.Step {
-	// If not instanced, return immediately.
+// expandStep analyzes a step's instancing configuration. It returns a slice of
+// step configs and a boolean indicating if the step is a dynamic placeholder.
+func expandStep(s *config.Step) (steps []*config.Step, isPlaceholder bool) {
+	// If not instanced, return immediately. This is not a placeholder.
 	if s.Instancing != config.ModeInstanced || s.Count == nil {
-		return []*config.Step{s}
+		return []*config.Step{s}, false
 	}
 
 	// Attempt to statically evaluate the expression.
 	val, diags := s.Count.Value(nil) // Use nil context for static eval.
 	if diags.HasErrors() || !val.IsKnown() {
-		// If it's not a static value, we can't expand it here.
-		// Dynamic evaluation will be handled in a later step.
-		// For now, treat it as a single instance to keep the DAG valid.
-		return []*config.Step{s}
+		// This is a dynamic count. Return the step as-is and flag it as a placeholder.
+		return []*config.Step{s}, true
 	}
 
 	if val.Type() != cty.Number {
 		// Invalid type for count, treat as single. Proper validation later.
-		return []*config.Step{s}
+		// This is not a placeholder because it's a static, invalid value.
+		return []*config.Step{s}, false
 	}
 
 	countBf, _ := val.AsBigFloat().Int64()
@@ -160,10 +161,10 @@ func expandStep(s *config.Step) []*config.Step {
 
 	if count <= 0 {
 		// Count of 0 or negative means no instances are created.
-		return []*config.Step{}
+		return []*config.Step{}, false
 	}
 
-	// Create 'count' copies of the step config.
+	// Create 'count' copies of the step config for static expansion.
 	instances := make([]*config.Step, count)
 	for i := 0; i < count; i++ {
 		// Create a shallow copy for each instance. This is safe because the
@@ -171,5 +172,5 @@ func expandStep(s *config.Step) []*config.Step {
 		instanceConf := *s
 		instances[i] = &instanceConf
 	}
-	return instances
+	return instances, false
 }

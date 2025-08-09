@@ -68,5 +68,5 @@ func TestPureGoModuleExecution(t *testing.T) {
 
 	// --- Assert ---
 	assert.NoError(t, result.Err, "Expected the run to succeed, but it failed.")
-	assert.Contains(t, result.LogOutput, `msg="✅ Finished step" step=step.string_manipulator.add_suffix`)
+	assert.Contains(t, result.LogOutput, `msg="✅ Finished step instance" step=step.string_manipulator.add_suffix[0]`)
 }

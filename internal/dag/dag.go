@@ -19,6 +19,9 @@ type Node struct {
 	ID   string // Unique ID, e.g., "step.http_request.my_step"
 	Name string // The instance name from HCL
 	Type NodeType
+	// IsPlaceholder is true if this node represents a dynamic `count` or `for_each`
+	// and requires runtime expansion by the executor.
+	IsPlaceholder bool
 	// Configuration is now from the format-agnostic model.
 	StepConfig     *config.Step
 	ResourceConfig *config.Resource

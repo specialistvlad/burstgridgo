@@ -44,24 +44,37 @@ func linkExplicitDeps(ctx context.Context, node *Node, dependsOn []string, model
 			return fmt.Errorf("node '%s' depends on non-existent identifier '%s'", node.ID, depAddrRaw)
 		}
 
-		var depNodeID string
+		var depNode *Node
+		var found bool
+
 		if parsedAddr.Index == -1 { // Shorthand reference (e.g., "http_request.my_api")
-			logger.Debug("Handling shorthand dependency reference.", "step_name", parsedAddr.Name, "instancing_mode", depStepConfig.Instancing)
-			if depStepConfig.Instancing == config.ModeInstanced {
-				err := fmt.Errorf("ambiguous dependency in '%s': '%s' refers to an instanced step. Use index syntax (e.g., '%s[0]') to specify which instance", node.ID, depAddrRaw, depAddrRaw)
-				logger.Error("Ambiguous dependency detected.", "error", err)
-				return err
+			logger.Debug("Handling shorthand dependency reference.", "step_name", parsedAddr.Name)
+
+			// First, check if this shorthand refers to a placeholder node.
+			placeholderID := fmt.Sprintf("step.%s", parsedAddr.Name)
+			if pNode, pFound := graph.Nodes[placeholderID]; pFound && pNode.IsPlaceholder {
+				logger.Debug("Shorthand reference resolved to a placeholder node.", "to_node_id", pNode.ID)
+				depNode = pNode
+				found = true
+			} else {
+				// If not a placeholder, apply standard instancing rules.
+				if depStepConfig.Instancing == config.ModeInstanced {
+					err := fmt.Errorf("ambiguous dependency in '%s': '%s' refers to an instanced step. Use index syntax (e.g., '%s[0]') to specify which instance", node.ID, depAddrRaw, depAddrRaw)
+					logger.Error("Ambiguous dependency detected.", "error", err)
+					return err
+				}
+				// It's a singular step, so it resolves to the [0] instance.
+				depNodeID := fmt.Sprintf("step.%s[0]", parsedAddr.Name)
+				logger.Debug("Shorthand reference resolved to singular step instance.", "to_node_id", depNodeID)
+				depNode, found = graph.Nodes[depNodeID]
 			}
-			// It's a singular step, so it resolves to the [0] instance.
-			depNodeID = fmt.Sprintf("step.%s[0]", parsedAddr.Name)
-			logger.Debug("Shorthand reference resolved to singular step instance.", "to_node_id", depNodeID)
 		} else { // Indexed reference (e.g., "http_request.my_api[2]")
 			logger.Debug("Handling indexed dependency reference.", "step_name", parsedAddr.Name, "index", parsedAddr.Index)
-			depNodeID = fmt.Sprintf("step.%s[%d]", parsedAddr.Name, parsedAddr.Index)
+			depNodeID := fmt.Sprintf("step.%s[%d]", parsedAddr.Name, parsedAddr.Index)
+			depNode, found = graph.Nodes[depNodeID]
 		}
 
-		depNode, found := graph.Nodes[depNodeID]
-		if !found {
+		if !found || depNode == nil {
 			return fmt.Errorf("node '%s' depends on non-existent identifier instance '%s'", node.ID, depAddrRaw)
 		}
 

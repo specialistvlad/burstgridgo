@@ -2,7 +2,6 @@ package testutil
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,13 +12,20 @@ import (
 // tests more resilient to internal refactoring.
 func AssertStepRan(t *testing.T, result *HarnessResult, runnerType, stepName string) {
 	t.Helper()
+	// This helper assumes a singular instance.
+	AssertStepInstanceRan(t, result, runnerType, stepName, 0)
+}
 
-	// This completes the Phase 2 refactoring by aligning the test suite with
-	// the new internal reality.
-	expectedLogSubstring := fmt.Sprintf("step=step.%s.%s[0]", runnerType, stepName)
+// AssertStepInstanceRan checks the log output within a HarnessResult to confirm
+// that a specific instance of a step has finished successfully.
+func AssertStepInstanceRan(t *testing.T, result *HarnessResult, runnerType, stepName string, index int) {
+	t.Helper()
+	// The log message for a placeholder's instance uses the placeholder's non-indexed ID.
+	placeholderID := fmt.Sprintf("step.%s.%s", runnerType, stepName)
+	instanceID := fmt.Sprintf("%s[%d]", placeholderID, index)
 
-	require.True(t,
-		strings.Contains(result.LogOutput, expectedLogSubstring),
-		"expected log output for step '%s.%s[0]' was not found in logs", runnerType, stepName,
-	)
+	// We check for the "Finished step instance" message which is logged upon success.
+	expectedLog := fmt.Sprintf(`msg="✅ Finished step instance" step=%s`, instanceID)
+	require.Contains(t, result.LogOutput, expectedLog,
+		"expected log for successful run of instance '%s' was not found", instanceID)
 }

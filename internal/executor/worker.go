@@ -23,11 +23,17 @@ func (e *Executor) worker(ctx context.Context, readyChan chan *dag.Node, cancel 
 		workerLogger.Debug("Worker picked up node for execution.")
 		node.SetState(dag.Running)
 		var err error
-		switch node.Type {
-		case dag.ResourceNode:
-			err = e.runResourceNode(ctx, node)
-		case dag.StepNode:
-			err = e.runStepNode(ctx, node)
+
+		// Main logic fork: handle placeholders differently from normal nodes.
+		if node.IsPlaceholder {
+			err = e.runPlaceholderNode(ctx, node)
+		} else {
+			switch node.Type {
+			case dag.ResourceNode:
+				err = e.runResourceNode(ctx, node)
+			case dag.StepNode:
+				err = e.runStepNode(ctx, node)
+			}
 		}
 
 		if err != nil {
@@ -50,7 +56,8 @@ func (e *Executor) worker(ctx context.Context, readyChan chan *dag.Node, cancel 
 			}
 		}
 
-		if node.Type == dag.StepNode {
+		// Don't check for resource destruction on placeholder nodes
+		if node.Type == dag.StepNode && !node.IsPlaceholder {
 			for _, dep := range node.Deps {
 				if dep.Type == dag.ResourceNode {
 					if dep.DecrementDescendantCount() == 0 {

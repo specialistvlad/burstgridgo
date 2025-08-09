@@ -5,42 +5,104 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/dag"
+	"github.com/zclconf/go-cty/cty"
 )
 
-// runStepNode handles the execution of a stateless step.
-func (e *Executor) runStepNode(ctx context.Context, node *dag.Node) error {
+// runPlaceholderNode handles the runtime expansion and execution of a dynamic step.
+func (e *Executor) runPlaceholderNode(ctx context.Context, node *dag.Node) error {
 	logger := ctxlog.FromContext(ctx).With("step", node.ID)
-	logger.Info("▶️ Starting step")
-	logger.Debug("Executing step node.")
+	logger.Info("▶️ Expanding dynamic step")
+
+	// 1. Evaluate the count expression
+	evalCtx := e.buildEvalContext(ctx, node)
+	val, diags := node.StepConfig.Count.Value(evalCtx)
+	if diags.HasErrors() {
+		return diags
+	}
+	if val.Type() != cty.Number {
+		return fmt.Errorf("count for step %s must be a number, but got %s", node.ID, val.Type().FriendlyName())
+	}
+	countBf, _ := val.AsBigFloat().Int64()
+	count := int(countBf)
+
+	if count < 0 {
+		return fmt.Errorf("count for step %s cannot be negative, got %d", node.ID, count)
+	}
+
+	logger.Debug("Dynamic count resolved.", "count", count)
+	if count == 0 {
+		logger.Info("✅ Finished expanding dynamic step (0 instances).")
+		// Set output to an empty list for downstream consumers.
+		node.Output = cty.EmptyTupleVal
+		return nil
+	}
+
+	// 2. Loop and execute each instance, collecting outputs.
+	outputs := make([]cty.Value, 0, count)
+	for i := 0; i < count; i++ {
+		instanceID := fmt.Sprintf("%s[%d]", node.ID, i)
+		instanceEvalCtx := evalCtx.NewChild()
+		instanceEvalCtx.Variables = make(map[string]cty.Value)
+		instanceEvalCtx.Variables["count"] = cty.ObjectVal(map[string]cty.Value{
+			"index": cty.NumberIntVal(int64(i)),
+		})
+
+		// Execute the core logic for this single instance.
+		output, err := e.executeStepLogic(ctx, node, instanceEvalCtx, instanceID)
+		if err != nil {
+			return fmt.Errorf("instance %s of step %s failed: %w", instanceID, node.ID, err)
+		}
+		outputs = append(outputs, output.(cty.Value))
+	}
+
+	// 3. Aggregate outputs and set them on the placeholder node.
+	node.Output = cty.ListVal(outputs)
+
+	logger.Info("✅ Finished expanding dynamic step.", "instances_created", count)
+	return nil
+}
+
+// runStepNode handles the execution of a single, non-placeholder step node.
+func (e *Executor) runStepNode(ctx context.Context, node *dag.Node) error {
+	evalCtx := e.buildEvalContext(ctx, node)
+	output, err := e.executeStepLogic(ctx, node, evalCtx, node.ID)
+	if err != nil {
+		return err
+	}
+	node.Output = output
+	return nil
+}
+
+// executeStepLogic contains the shared logic for running a step's handler.
+func (e *Executor) executeStepLogic(ctx context.Context, node *dag.Node, evalCtx *hcl.EvalContext, instanceID string) (any, error) {
+	logger := ctxlog.FromContext(ctx).With("step", instanceID)
+	logger.Info("▶️ Starting step instance")
 
 	runnerDef, ok := e.registry.DefinitionRegistry[node.StepConfig.RunnerType]
 	if !ok {
-		return fmt.Errorf("unknown runner type '%s'", node.StepConfig.RunnerType)
+		return nil, fmt.Errorf("unknown runner type '%s'", node.StepConfig.RunnerType)
 	}
 	handlerName := runnerDef.Lifecycle.OnRun
 	registeredHandler, ok := e.registry.HandlerRegistry[handlerName]
 	if !ok {
-		return fmt.Errorf("handler '%s' not registered", handlerName)
+		return nil, fmt.Errorf("handler '%s' not registered", handlerName)
 	}
 
-	// Use the robust decoding logic via the converter interface.
 	inputStruct := registeredHandler.NewInput()
 	if inputStruct != nil {
-		evalCtx := e.buildEvalContext(ctx, node)
-		// Pass the context down to the decoder.
 		err := e.converter.DecodeBody(ctx, inputStruct, node.StepConfig.Arguments, runnerDef.Inputs, evalCtx)
 		if err != nil {
-			return fmt.Errorf("failed to decode arguments for step %s: %w", node.ID, err)
+			return nil, fmt.Errorf("failed to decode arguments for step instance %s: %w", instanceID, err)
 		}
 	}
-	logger.Debug("Step Input:", "data", formatValueForLogs(inputStruct))
+	logger.Debug("Step instance input:", "data", formatValueForLogs(inputStruct))
 
-	logger.Debug("Building step dependencies.")
 	depsStruct, err := e.buildDepsStruct(ctx, node, registeredHandler)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	logger.Debug("Calling step run handler.", "handler", handlerName)
@@ -57,18 +119,14 @@ func (e *Executor) runStepNode(ctx context.Context, node *dag.Node) error {
 	results := handlerFunc.Call(callArgs)
 	nativeOutput, errResult := results[0].Interface(), results[1].Interface()
 	if errResult != nil {
-		return errResult.(error)
+		return nil, errResult.(error)
 	}
 
-	// Convert the native Go return value to a cty.Value for the engine.
 	ctyOutput, err := e.converter.ToCtyValue(nativeOutput)
 	if err != nil {
-		return fmt.Errorf("failed to convert handler output to cty.Value for step %s: %w", node.ID, err)
+		return nil, fmt.Errorf("failed to convert handler output to cty.Value for step instance %s: %w", instanceID, err)
 	}
-	node.Output = ctyOutput
 
-	logger.Debug("Step Output:", "data", node.Output)
-
-	logger.Info("✅ Finished step")
-	return nil
+	logger.Info("✅ Finished step instance")
+	return ctyOutput, nil
 }

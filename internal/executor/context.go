@@ -7,16 +7,18 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/ctxlog"
 	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/zclconf/go-cty/cty"
 )
 
 // instanceOutput is a helper struct to hold an instance's output along with its
-// index, so we can sort them before adding to the HCL context.
+// index and instancing mode.
 type instanceOutput struct {
 	index int
 	value cty.Value
+	mode  config.InstancingMode
 }
 
 var (
@@ -34,49 +36,56 @@ func (e *Executor) buildEvalContext(ctx context.Context, node *dag.Node) *hcl.Ev
 	stepOutputsByRunner := make(map[string]map[string][]instanceOutput)
 
 	// First pass: collect outputs from ALL successfully completed steps in the graph.
-	// This provides a consistent, global view of the state for the HCL engine.
 	logger.Debug("Starting to collect outputs from all completed graph nodes.")
 	for _, graphNode := range e.Graph.Nodes {
-		// Only consider step nodes that have finished successfully and have an output.
 		if graphNode.Type != dag.StepNode || graphNode.GetState() != dag.Done || graphNode.Output == nil {
 			continue
 		}
 
-		// Get runner type and instance name directly from the config for robustness.
 		runnerType := graphNode.StepConfig.RunnerType
 		instanceName := graphNode.StepConfig.Name
 
-		// Parse the index from the node ID.
-		matches := nodeIndexRegex.FindStringSubmatch(graphNode.ID)
-		if len(matches) != 2 {
-			logger.Warn("Could not parse instance index from graph node ID, skipping for HCL context.", "graph_node_id", graphNode.ID)
-			continue
-		}
-		index, _ := strconv.Atoi(matches[1])
-
-		// Initialize nested maps if they don't exist.
 		if _, ok := stepOutputsByRunner[runnerType]; !ok {
 			stepOutputsByRunner[runnerType] = make(map[string][]instanceOutput)
 		}
 
-		// Append the instance's output, wrapped in the 'output' object as requested.
-		outputWithWrapper := cty.ObjectVal(map[string]cty.Value{
-			"output": graphNode.Output.(cty.Value),
-		})
-		stepOutputsByRunner[runnerType][instanceName] = append(
-			stepOutputsByRunner[runnerType][instanceName],
-			instanceOutput{index: index, value: outputWithWrapper},
-		)
-		logger.Debug("Collected completed step output for instance.",
-			"source_node_id", graphNode.ID,
-			"runner", runnerType,
-			"name", instanceName,
-			"index", index,
-		)
+		// ** THE FIX **: Handle placeholder and non-placeholder nodes differently.
+		if graphNode.IsPlaceholder {
+			// For a placeholder, its Output is the raw, un-wrapped list of instance outputs.
+			// We store this list directly, using a sentinel index to identify it in the second pass.
+			stepOutputsByRunner[runnerType][instanceName] = []instanceOutput{
+				{
+					index: -1, // Sentinel for a pre-aggregated placeholder list.
+					value: graphNode.Output.(cty.Value),
+					mode:  config.ModeInstanced,
+				},
+			}
+		} else {
+			// This is the original logic for non-placeholder (static count or single) nodes.
+			matches := nodeIndexRegex.FindStringSubmatch(graphNode.ID)
+			if len(matches) != 2 {
+				logger.Warn("Could not parse instance index from graph node ID, skipping for HCL context.", "graph_node_id", graphNode.ID)
+				continue
+			}
+			index, _ := strconv.Atoi(matches[1])
+
+			// For static instances, we wrap each individual output in an object.
+			outputWithWrapper := cty.ObjectVal(map[string]cty.Value{
+				"output": graphNode.Output.(cty.Value),
+			})
+			stepOutputsByRunner[runnerType][instanceName] = append(
+				stepOutputsByRunner[runnerType][instanceName],
+				instanceOutput{
+					index: index,
+					value: outputWithWrapper,
+					mode:  graphNode.StepConfig.Instancing,
+				},
+			)
+		}
 	}
 	logger.Debug("Finished collecting completed step outputs.")
 
-	// Second pass: build the final `step` object for the HCL context from the collected outputs.
+	// Second pass: build the final `step` object for the HCL context.
 	logger.Debug("Building final 'step' variable for HCL context.")
 	finalStepOutputs := make(map[string]cty.Value)
 	for runnerType, instancesMap := range stepOutputsByRunner {
@@ -85,27 +94,54 @@ func (e *Executor) buildEvalContext(ctx context.Context, node *dag.Node) *hcl.Ev
 			if len(outputs) == 0 {
 				continue
 			}
+
+			// ** THE FIX **: Check for the placeholder's sentinel value.
+			if len(outputs) == 1 && outputs[0].index == -1 {
+				// This is a dynamic-count placeholder. The `value` is the raw list (e.g., [val1, val2]).
+				rawList := outputs[0].value
+
+				// To support the splat operator, we must transform this raw list into a list of objects
+				// of the shape `[ {output: val1}, {output: val2} ]`.
+				wrappedOutputs := make([]cty.Value, 0, rawList.LengthInt())
+				if rawList.IsKnown() && !rawList.IsNull() && rawList.LengthInt() > 0 {
+					for it := rawList.ElementIterator(); it.Next(); {
+						_, val := it.Element()
+						wrappedObj := cty.ObjectVal(map[string]cty.Value{
+							"output": val,
+						})
+						wrappedOutputs = append(wrappedOutputs, wrappedObj)
+					}
+				}
+
+				if len(wrappedOutputs) > 0 {
+					runnerMap[instanceName] = cty.ListVal(wrappedOutputs)
+				} else {
+					runnerMap[instanceName] = cty.EmptyTupleVal
+				}
+				continue
+			}
+
+			// This is the original logic for static-count and single steps.
 			sort.Slice(outputs, func(i, j int) bool {
 				return outputs[i].index < outputs[j].index
 			})
 
-			if len(outputs) > 1 {
-				outputList := make([]cty.Value, len(outputs))
-				for i, out := range outputs {
-					outputList[i] = out.value
+			if outputs[0].mode == config.ModeInstanced {
+				// For static-count steps, create a sparse list of the pre-wrapped objects.
+				maxIndex := outputs[len(outputs)-1].index
+				outputList := make([]cty.Value, maxIndex+1)
+				outputType := outputs[0].value.Type()
+
+				for i := 0; i <= maxIndex; i++ {
+					outputList[i] = cty.NullVal(outputType)
+				}
+				for _, out := range outputs {
+					outputList[out.index] = out.value
 				}
 				runnerMap[instanceName] = cty.ListVal(outputList)
 			} else {
+				// For singular steps, expose the single value directly.
 				runnerMap[instanceName] = outputs[0].value
-			}
-
-			if val, ok := runnerMap[instanceName]; ok {
-				logger.Debug("Prepared HCL context value for step.",
-					"runner", runnerType,
-					"name", instanceName,
-					"is_list", val.Type().IsListType(),
-					"num_instances", len(outputs),
-				)
 			}
 		}
 		if len(runnerMap) > 0 {
@@ -113,17 +149,17 @@ func (e *Executor) buildEvalContext(ctx context.Context, node *dag.Node) *hcl.Ev
 		}
 	}
 	vars["step"] = cty.ObjectVal(finalStepOutputs)
-	logger.Debug("Final 'step' variable constructed.", "value_gostring", vars["step"].GoString())
 
 	// Inject `count.index` for the *current* node that is executing.
-	matches := nodeIndexRegex.FindStringSubmatch(node.ID)
-	if len(matches) == 2 {
-		index, err := strconv.Atoi(matches[1])
-		if err == nil {
-			logger.Debug("Injecting count.index into context.", "node", node.ID, "index", index)
-			vars["count"] = cty.ObjectVal(map[string]cty.Value{
-				"index": cty.NumberIntVal(int64(index)),
-			})
+	if !node.IsPlaceholder {
+		matches := nodeIndexRegex.FindStringSubmatch(node.ID)
+		if len(matches) == 2 {
+			index, err := strconv.Atoi(matches[1])
+			if err == nil {
+				vars["count"] = cty.ObjectVal(map[string]cty.Value{
+					"index": cty.NumberIntVal(int64(index)),
+				})
+			}
 		}
 	}
 

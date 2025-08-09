@@ -76,28 +76,44 @@ func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, mode
 				continue
 			}
 
-			finalIndex := ref.Index
-			if finalIndex == -1 { // Shorthand reference
+			var depNode *Node
+			var nodeFound bool
+
+			if ref.Index == -1 { // Shorthand reference
 				logger.Debug("Handling shorthand implicit reference.", "instancing_mode", depStepConfig.Instancing)
-				if depStepConfig.Instancing == config.ModeInstanced {
-					return fmt.Errorf("ambiguous implicit dependency in '%s': expression refers to instanced step '%s' without an index", node.ID, ref.FullName)
+
+				// First, check if this shorthand refers to a placeholder node.
+				placeholderID := fmt.Sprintf("step.%s", ref.FullName)
+				if pNode, pFound := graph.Nodes[placeholderID]; pFound && pNode.IsPlaceholder {
+					depNode = pNode
+					nodeFound = true
+				} else {
+					// If not a placeholder, apply standard instancing rules.
+					if depStepConfig.Instancing == config.ModeInstanced {
+						return fmt.Errorf("ambiguous implicit dependency in '%s': expression refers to instanced step '%s' without an index", node.ID, ref.FullName)
+					}
+					// It's a singular step, so default to [0]
+					depNodeID := fmt.Sprintf("step.%s[0]", ref.FullName)
+					depNode, nodeFound = graph.Nodes[depNodeID]
 				}
-				finalIndex = 0 // It's a singular step, so default to [0]
+			} else { // Indexed reference
+				depNodeID := fmt.Sprintf("step.%s[%d]", ref.FullName, ref.Index)
+				depNode, nodeFound = graph.Nodes[depNodeID]
 			}
 
-			depNodeID := fmt.Sprintf("step.%s[%d]", ref.FullName, finalIndex)
-			depNode, nodeFound := graph.Nodes[depNodeID]
-			if !nodeFound {
-				return fmt.Errorf("implicit dependency error in '%s': referenced step instance '%s' does not exist", node.ID, depNodeID)
+			if !nodeFound || depNode == nil {
+				// This can happen if a variable refers to something that isn't a node (e.g. `var.foo`), which is fine.
+				logger.Debug("Implicit dependency reference did not resolve to a known graph node.", "ref_full_name", ref.FullName)
+				continue
 			}
 
 			if err := validateOutputReference(traversal, depNode, r); err != nil {
 				return err
 			}
 
-			if _, exists := node.Deps[depNodeID]; !exists {
-				logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depNodeID)
-				node.Deps[depNodeID] = depNode
+			if _, exists := node.Deps[depNode.ID]; !exists {
+				logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depNode.ID)
+				node.Deps[depNode.ID] = depNode
 				depNode.Dependents[node.ID] = node
 			}
 			continue
