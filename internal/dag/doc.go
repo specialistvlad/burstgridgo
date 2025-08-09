@@ -1,8 +1,6 @@
-// Package dag is responsible for building a validated execution graph. It defines
-// the core data structures for the graph (Node, Graph) and contains the logic
-// for translating a GridConfig into a Directed Acyclic Graph (DAG),
-// resolving dependencies, and detecting cycles.
-//
-// This package does not execute the graph; that is the responsibility of the
-// 'executor' package.
+/*
+Package dag provides a generic, thread-safe implementation of a
+Directed Acyclic Graph (DAG). It is concerned only with the topology
+of the graph and not the application-specific data of its nodes.
+*/
 package dag

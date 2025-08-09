@@ -2,7 +2,7 @@
 // hcl_go) into the format-agnostic configuration model defined in the
 // config package.
 
-package hcl
+package hcl_adapter
 
 import (
 	"context"

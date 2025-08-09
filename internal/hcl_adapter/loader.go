@@ -1,4 +1,4 @@
-package hcl
+package hcl_adapter
 
 import (
 	"context"

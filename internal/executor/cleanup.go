@@ -4,12 +4,12 @@ import (
 	"context"
 	"reflect"
 
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/dag"
 )
 
 // pushCleanup adds a function to the LIFO cleanup stack.
-func (e *Executor) pushCleanup(node *dag.Node, f func()) {
+func (e *Executor) pushCleanup(node *builder.Node, f func()) {
 	e.cleanupMutex.Lock()
 	defer e.cleanupMutex.Unlock()
 	e.cleanupStack = append(e.cleanupStack, func() {
@@ -30,7 +30,7 @@ func (e *Executor) executeCleanupStack(ctx context.Context) {
 }
 
 // destroyResource handles the efficient, runtime destruction of a resource.
-func (e *Executor) destroyResource(ctx context.Context, node *dag.Node) {
+func (e *Executor) destroyResource(ctx context.Context, node *builder.Node) {
 	logger := ctxlog.FromContext(ctx)
 	instance, found := e.resourceInstances.Load(node.ID)
 	if !found {

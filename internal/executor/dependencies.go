@@ -7,13 +7,13 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
 // buildDepsStruct populates the `deps` struct for a step handler.
-func (e *Executor) buildDepsStruct(ctx context.Context, node *dag.Node, handler *registry.RegisteredRunner) (any, error) {
+func (e *Executor) buildDepsStruct(ctx context.Context, node *builder.Node, handler *registry.RegisteredRunner) (any, error) {
 	logger := ctxlog.FromContext(ctx)
 	logger.Debug("Building dependency struct.", "step", node.ID)
 	depsStruct := handler.NewDeps()

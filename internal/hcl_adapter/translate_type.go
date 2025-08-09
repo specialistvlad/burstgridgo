@@ -1,7 +1,7 @@
 // This file contains the logic for parsing HCL type expressions (e.g., `string`,
 // `list(number)`) into their corresponding cty.Type objects.
 
-package hcl
+package hcl_adapter
 
 import (
 	"context"

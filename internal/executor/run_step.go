@@ -6,13 +6,13 @@ import (
 	"reflect"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/zclconf/go-cty/cty"
 )
 
 // runPlaceholderNode handles the runtime expansion and execution of a dynamic step.
-func (e *Executor) runPlaceholderNode(ctx context.Context, node *dag.Node) error {
+func (e *Executor) runPlaceholderNode(ctx context.Context, node *builder.Node) error {
 	logger := ctxlog.FromContext(ctx).With("step", node.ID)
 	logger.Info("▶️ Expanding dynamic step")
 
@@ -66,7 +66,7 @@ func (e *Executor) runPlaceholderNode(ctx context.Context, node *dag.Node) error
 }
 
 // runStepNode handles the execution of a single, non-placeholder step node.
-func (e *Executor) runStepNode(ctx context.Context, node *dag.Node) error {
+func (e *Executor) runStepNode(ctx context.Context, node *builder.Node) error {
 	evalCtx := e.buildEvalContext(ctx, node)
 	output, err := e.executeStepLogic(ctx, node, evalCtx, node.ID)
 	if err != nil {
@@ -77,7 +77,7 @@ func (e *Executor) runStepNode(ctx context.Context, node *dag.Node) error {
 }
 
 // executeStepLogic contains the shared logic for running a step's handler.
-func (e *Executor) executeStepLogic(ctx context.Context, node *dag.Node, evalCtx *hcl.EvalContext, instanceID string) (any, error) {
+func (e *Executor) executeStepLogic(ctx context.Context, node *builder.Node, evalCtx *hcl.EvalContext, instanceID string) (any, error) {
 	logger := ctxlog.FromContext(ctx).With("step", instanceID)
 	logger.Info("▶️ Starting step instance")
 

@@ -1,4 +1,4 @@
-package dag
+package builder
 
 import (
 	"context"
@@ -10,16 +10,18 @@ import (
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
-// createNodes performs the first pass of graph creation.
+// createNodes performs the first pass of graph creation, populating the graph
+// with all nodes defined in the configuration.
 func createNodes(ctx context.Context, grid *config.Grid, graph *Graph) {
 	logger := ctxlog.FromContext(ctx)
+	logger.Debug("Starting node creation pass.")
+
 	for _, s := range grid.Steps {
 		expandedSteps, isPlaceholder := expandStep(s)
 
 		if isPlaceholder {
-			// This is a dynamic step that will be expanded at runtime. Create a
-			// single placeholder node with a non-indexed ID.
 			id := fmt.Sprintf("step.%s.%s", s.RunnerType, s.Name)
+			logger.Debug("Creating placeholder step node.", "id", id)
 			if _, exists := graph.Nodes[id]; exists {
 				logger.Warn("Duplicate step definition found, it will be overwritten.", "id", id)
 			}
@@ -27,13 +29,12 @@ func createNodes(ctx context.Context, grid *config.Grid, graph *Graph) {
 				ID:            id,
 				Name:          s.Name,
 				Type:          StepNode,
-				IsPlaceholder: true, // Mark this as a placeholder
-				StepConfig:    s,    // Use the original, unexpanded config
-				Deps:          make(map[string]*Node),
-				Dependents:    make(map[string]*Node),
+				IsPlaceholder: true,
+				StepConfig:    s,
 			}
+			graph.dag.AddNode(id)
 		} else {
-			// This is a static expansion.
+			logger.Debug("Creating static step nodes.", "name", s.Name, "instance_count", len(expandedSteps))
 			for i, expandedS := range expandedSteps {
 				id := fmt.Sprintf("step.%s.%s[%d]", expandedS.RunnerType, expandedS.Name, i)
 				if _, exists := graph.Nodes[id]; exists {
@@ -44,14 +45,14 @@ func createNodes(ctx context.Context, grid *config.Grid, graph *Graph) {
 					Name:       expandedS.Name,
 					Type:       StepNode,
 					StepConfig: expandedS,
-					Deps:       make(map[string]*Node),
-					Dependents: make(map[string]*Node),
 				}
+				graph.dag.AddNode(id)
 			}
 		}
 	}
 	for _, r := range grid.Resources {
 		id := fmt.Sprintf("resource.%s.%s", r.AssetType, r.Name)
+		logger.Debug("Creating resource node.", "id", id)
 		if _, exists := graph.Nodes[id]; exists {
 			logger.Warn("Duplicate resource definition found, it will be overwritten.", "id", id)
 		}
@@ -60,13 +61,13 @@ func createNodes(ctx context.Context, grid *config.Grid, graph *Graph) {
 			Name:           r.Name,
 			Type:           ResourceNode,
 			ResourceConfig: r,
-			Deps:           make(map[string]*Node),
-			Dependents:     make(map[string]*Node),
 		}
+		graph.dag.AddNode(id)
 	}
+	logger.Debug("Finished node creation pass.")
 }
 
-// linkNodes performs the second pass, establishing dependency links.
+// linkNodes performs the second pass, establishing dependency edges between nodes.
 func linkNodes(ctx context.Context, model *config.Model, graph *Graph, r *registry.Registry) error {
 	logger := ctxlog.FromContext(ctx)
 	logger.Debug("Starting node linking pass.")
@@ -78,7 +79,6 @@ func linkNodes(ctx context.Context, model *config.Model, graph *Graph, r *regist
 		var expressions []hcl.Expression
 
 		if node.Type == StepNode {
-			// For placeholders, we must consider variables in the `count` expression for dependency linking.
 			if node.IsPlaceholder && node.StepConfig.Count != nil {
 				expressions = append(expressions, node.StepConfig.Count)
 			}
@@ -96,13 +96,19 @@ func linkNodes(ctx context.Context, model *config.Model, graph *Graph, r *regist
 			}
 		}
 
-		if err := linkExplicitDeps(ctx, node, dependsOn, model, graph); err != nil {
-			return err
-		}
-		for _, expr := range expressions {
-			// Pass model to implicit linker to make it instance-aware.
-			if err := linkImplicitDeps(ctx, node, expr, model, graph, r); err != nil {
+		if len(dependsOn) > 0 {
+			nodeLogger.Debug("Linking explicit dependencies.", "count", len(dependsOn))
+			if err := linkExplicitDeps(ctx, node, dependsOn, model, graph); err != nil {
 				return err
+			}
+		}
+
+		if len(expressions) > 0 {
+			nodeLogger.Debug("Linking implicit dependencies from expressions.", "count", len(expressions))
+			for _, expr := range expressions {
+				if err := linkImplicitDeps(ctx, node, expr, model, graph, r); err != nil {
+					return err
+				}
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-package dag
+package builder
 
 import (
 	"context"
@@ -18,14 +18,11 @@ type parsedStepRef struct {
 }
 
 // parseStepTraversal analyzes an HCL traversal to extract a step reference.
-// A valid step reference is of the form `step.<runner_type>.<instance_name>`,
-// optionally followed by an index.
 func parseStepTraversal(traversal hcl.Traversal) (*parsedStepRef, bool) {
 	if len(traversal) < 3 || traversal.RootName() != "step" {
 		return nil, false
 	}
 
-	// Expect step.<runner_type>.<instance_name>
 	runnerAttr, runnerOk := traversal[1].(hcl.TraverseAttr)
 	nameAttr, nameOk := traversal[2].(hcl.TraverseAttr)
 	if !runnerOk || !nameOk {
@@ -35,7 +32,6 @@ func parseStepTraversal(traversal hcl.Traversal) (*parsedStepRef, bool) {
 	fullName := fmt.Sprintf("%s.%s", runnerAttr.Name, nameAttr.Name)
 	index := -1
 
-	// Check if an index immediately follows the name.
 	if len(traversal) > 3 {
 		if indexer, ok := traversal[3].(hcl.TraverseIndex); ok {
 			if indexer.Key.Type() == cty.Number {
@@ -79,30 +75,25 @@ func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, mode
 			var depNode *Node
 			var nodeFound bool
 
-			if ref.Index == -1 { // Shorthand reference
+			if ref.Index == -1 {
 				logger.Debug("Handling shorthand implicit reference.", "instancing_mode", depStepConfig.Instancing)
-
-				// First, check if this shorthand refers to a placeholder node.
 				placeholderID := fmt.Sprintf("step.%s", ref.FullName)
 				if pNode, pFound := graph.Nodes[placeholderID]; pFound && pNode.IsPlaceholder {
 					depNode = pNode
 					nodeFound = true
 				} else {
-					// If not a placeholder, apply standard instancing rules.
 					if depStepConfig.Instancing == config.ModeInstanced {
 						return fmt.Errorf("ambiguous implicit dependency in '%s': expression refers to instanced step '%s' without an index", node.ID, ref.FullName)
 					}
-					// It's a singular step, so default to [0]
 					depNodeID := fmt.Sprintf("step.%s[0]", ref.FullName)
 					depNode, nodeFound = graph.Nodes[depNodeID]
 				}
-			} else { // Indexed reference
+			} else {
 				depNodeID := fmt.Sprintf("step.%s[%d]", ref.FullName, ref.Index)
 				depNode, nodeFound = graph.Nodes[depNodeID]
 			}
 
 			if !nodeFound || depNode == nil {
-				// This can happen if a variable refers to something that isn't a node (e.g. `var.foo`), which is fine.
 				logger.Debug("Implicit dependency reference did not resolve to a known graph node.", "ref_full_name", ref.FullName)
 				continue
 			}
@@ -111,26 +102,25 @@ func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, mode
 				return err
 			}
 
-			if _, exists := node.Deps[depNode.ID]; !exists {
-				logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depNode.ID)
-				node.Deps[depNode.ID] = depNode
-				depNode.Dependents[node.ID] = node
+			logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depNode.ID)
+			if err := graph.dag.AddEdge(depNode.ID, node.ID); err != nil {
+				return fmt.Errorf("error linking implicit dependency: %w", err)
 			}
+			// Legacy map population removed here.
 			continue
 		}
 
-		// Fallback for resource dependencies
 		if len(traversal) >= 3 && traversal.RootName() == "resource" {
 			typeAttr, typeOk := traversal[1].(hcl.TraverseAttr)
 			nameAttr, nameOk := traversal[2].(hcl.TraverseAttr)
 			if typeOk && nameOk {
 				depID := fmt.Sprintf("resource.%s.%s", typeAttr.Name, nameAttr.Name)
 				if depNode, ok := graph.Nodes[depID]; ok {
-					if _, exists := node.Deps[depID]; !exists {
-						logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depID)
-						node.Deps[depID] = depNode
-						depNode.Dependents[node.ID] = node
+					logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depID)
+					if err := graph.dag.AddEdge(depNode.ID, node.ID); err != nil {
+						return fmt.Errorf("error linking implicit dependency: %w", err)
 					}
+					// Legacy map population removed here.
 				}
 			}
 		}

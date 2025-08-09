@@ -2,7 +2,7 @@
 // native Go representation (interface{}). This is necessary for handling
 // generic types like object({}) which decode into map[string]any.
 
-package hcl
+package hcl_adapter
 
 import (
 	"fmt"

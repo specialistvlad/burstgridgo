@@ -1,4 +1,4 @@
-package dag
+package builder
 
 import (
 	"fmt"
@@ -20,21 +20,16 @@ func formatTraversal(t hcl.Traversal) string {
 		case hcl.TraverseRoot:
 			sb.WriteString(p.Name)
 		case hcl.TraverseAttr:
-			// The first part of a traversal is TraverseRoot, so any attr
-			// will have something before it.
 			sb.WriteRune('.')
 			sb.WriteString(p.Name)
 		case hcl.TraverseIndex:
 			sb.WriteRune('[')
 			if p.Key.Type() == cty.String {
-				// Format strings with quotes
 				sb.WriteString(fmt.Sprintf("%q", p.Key.AsString()))
 			} else if p.Key.Type() == cty.Number {
-				// Format numbers directly
 				bf := p.Key.AsBigFloat()
 				sb.WriteString(bf.Text('f', -1))
 			} else {
-				// Fallback for any other complex key type
 				sb.WriteString("...")
 			}
 			sb.WriteRune(']')
@@ -78,39 +73,6 @@ func parseDepAddress(addr string) (*depAddress, error) {
 	return &depAddress{Name: name, Index: index}, nil
 }
 
-// detectCycles checks for circular dependencies in the graph using DFS.
-func (g *Graph) detectCycles() error {
-	visiting := make(map[string]bool)
-	visited := make(map[string]bool)
-
-	var visit func(node *Node) error
-	visit = func(node *Node) error {
-		visiting[node.ID] = true
-		for _, dep := range node.Deps {
-			if visiting[dep.ID] {
-				return fmt.Errorf("cycle detected involving '%s'", dep.ID)
-			}
-			if !visited[dep.ID] {
-				if err := visit(dep); err != nil {
-					return err
-				}
-			}
-		}
-		delete(visiting, node.ID)
-		visited[node.ID] = true
-		return nil
-	}
-
-	for _, node := range g.Nodes {
-		if !visited[node.ID] {
-			if err := visit(node); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // validateOutputReference checks if a reference to a step's output is valid.
 func validateOutputReference(traversal hcl.Traversal, depNode *Node, r *registry.Registry) error {
 	if depNode.Type != StepNode || len(traversal) < 5 {
@@ -138,21 +100,16 @@ func validateOutputReference(traversal hcl.Traversal, depNode *Node, r *registry
 // expandStep analyzes a step's instancing configuration. It returns a slice of
 // step configs and a boolean indicating if the step is a dynamic placeholder.
 func expandStep(s *config.Step) (steps []*config.Step, isPlaceholder bool) {
-	// If not instanced, return immediately. This is not a placeholder.
 	if s.Instancing != config.ModeInstanced || s.Count == nil {
 		return []*config.Step{s}, false
 	}
 
-	// Attempt to statically evaluate the expression.
-	val, diags := s.Count.Value(nil) // Use nil context for static eval.
+	val, diags := s.Count.Value(nil)
 	if diags.HasErrors() || !val.IsKnown() {
-		// This is a dynamic count. Return the step as-is and flag it as a placeholder.
 		return []*config.Step{s}, true
 	}
 
 	if val.Type() != cty.Number {
-		// Invalid type for count, treat as single. Proper validation later.
-		// This is not a placeholder because it's a static, invalid value.
 		return []*config.Step{s}, false
 	}
 
@@ -160,15 +117,11 @@ func expandStep(s *config.Step) (steps []*config.Step, isPlaceholder bool) {
 	count := int(countBf)
 
 	if count <= 0 {
-		// Count of 0 or negative means no instances are created.
 		return []*config.Step{}, false
 	}
 
-	// Create 'count' copies of the step config for static expansion.
 	instances := make([]*config.Step, count)
 	for i := 0; i < count; i++ {
-		// Create a shallow copy for each instance. This is safe because the
-		// contents are just values or pointers to immutable expressions.
 		instanceConf := *s
 		instances[i] = &instanceConf
 	}

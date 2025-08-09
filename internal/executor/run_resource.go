@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/dag"
 )
 
 // runResourceNode handles the creation of a stateful resource.
-func (e *Executor) runResourceNode(ctx context.Context, node *dag.Node) error {
+func (e *Executor) runResourceNode(ctx context.Context, node *builder.Node) error {
 	logger := ctxlog.FromContext(ctx).With("resource", node.ID)
 	logger.Info("▶️ Creating resource")
 	logger.Debug("Executing resource node.")

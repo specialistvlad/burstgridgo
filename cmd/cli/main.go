@@ -9,7 +9,7 @@ import (
 
 	"github.com/vk/burstgridgo/internal/app"
 	"github.com/vk/burstgridgo/internal/cli"
-	"github.com/vk/burstgridgo/internal/hcl"
+	"github.com/vk/burstgridgo/internal/hcl_adapter"
 )
 
 // main is the entrypoint for the burstgridgo application.
@@ -49,7 +49,7 @@ func run(outW io.Writer, args []string) (err error) {
 	}()
 
 	// Instantiate the concrete HCL loader to pass to the app.
-	loader := hcl.NewLoader()
+	loader := hcl_adapter.NewLoader()
 	burstgridApp := app.NewApp(outW, appConfig, loader)
 
 	return burstgridApp.Run(context.Background(), appConfig)

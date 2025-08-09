@@ -1,119 +1,142 @@
 package dag
 
 import (
-	"sync"
-	"sync/atomic"
-
-	"github.com/vk/burstgridgo/internal/config"
+	"fmt"
 )
 
-// --- Public Structs ---
-
-// Graph is the collection of all nodes that represent the execution plan.
-type Graph struct {
-	Nodes map[string]*Node
+// New creates and returns an initialized, empty Graph.
+func New() *Graph {
+	return &Graph{
+		nodes: make(map[string]*node),
+	}
 }
 
-// Node is a single node in the execution graph.
-type Node struct {
-	ID   string // Unique ID, e.g., "step.http_request.my_step"
-	Name string // The instance name from HCL
-	Type NodeType
-	// IsPlaceholder is true if this node represents a dynamic `count` or `for_each`
-	// and requires runtime expansion by the executor.
-	IsPlaceholder bool
-	// Configuration is now from the format-agnostic model.
-	StepConfig     *config.Step
-	ResourceConfig *config.Resource
-	Deps           map[string]*Node
-	Dependents     map[string]*Node
-	Error          error
-	Output         any
+// AddNode adds a new node with the given ID to the graph. If a node with
+// the same ID already exists, the function does nothing.
+func (g *Graph) AddNode(id string) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
 
-	// Internal state management
-	depCount        atomic.Int32
-	descendantCount atomic.Int32
-	state           atomic.Int32
-	destroyOnce     sync.Once
-	skipOnce        sync.Once
+	if _, ok := g.nodes[id]; ok {
+		return
+	}
+
+	g.nodes[id] = &node{
+		id:         id,
+		deps:       make(map[string]*node),
+		dependents: make(map[string]*node),
+	}
 }
 
-// --- Enums and Consts ---
+// AddEdge creates a directed edge from the `fromID` node to the `toID` node.
+// This signifies that `toID` has a dependency on `fromID`. An error is returned
+// if either node does not exist or if the edge would create a self-reference.
+func (g *Graph) AddEdge(fromID, toID string) error {
+	if fromID == toID {
+		return fmt.Errorf("self-referential edge not allowed: %s -> %s", fromID, fromID)
+	}
 
-// NodeType distinguishes between node types in the graph.
-type NodeType int
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
 
-const (
-	StepNode NodeType = iota
-	ResourceNode
-)
+	fromNode, ok := g.nodes[fromID]
+	if !ok {
+		return fmt.Errorf("source node not found: %s", fromID)
+	}
 
-// State represents the execution state of a node in the graph.
-type State int32
+	toNode, ok := g.nodes[toID]
+	if !ok {
+		return fmt.Errorf("destination node not found: %s", toID)
+	}
 
-const (
-	Pending State = iota
-	Running
-	Done
-	Failed
-)
+	toNode.deps[fromID] = fromNode
+	fromNode.dependents[toID] = toNode
 
-// --- Concurrency-Safe Methods ---
-
-// DepCount returns the current number of unmet dependencies.
-func (n *Node) DepCount() int32 {
-	return n.depCount.Load()
+	return nil
 }
 
-// DecrementDepCount atomically decrements the dependency counter and returns the new value.
-func (n *Node) DecrementDepCount() int32 {
-	return n.depCount.Add(-1)
+// NEW METHOD
+// Dependencies returns a slice of node IDs that the given node depends on.
+func (g *Graph) Dependencies(id string) ([]string, error) {
+	g.mutex.RLock()
+	defer g.mutex.RUnlock()
+
+	n, ok := g.nodes[id]
+	if !ok {
+		return nil, fmt.Errorf("node not found: %s", id)
+	}
+
+	deps := make([]string, 0, len(n.deps))
+	for depID := range n.deps {
+		deps = append(deps, depID)
+	}
+	return deps, nil
 }
 
-// DecrementDescendantCount atomically decrements the resource descendant counter and returns the new value.
-func (n *Node) DecrementDescendantCount() int32 {
-	return n.descendantCount.Add(-1)
+// NEW METHOD
+// Dependents returns a slice of node IDs that depend on the given node.
+func (g *Graph) Dependents(id string) ([]string, error) {
+	g.mutex.RLock()
+	defer g.mutex.RUnlock()
+
+	n, ok := g.nodes[id]
+	if !ok {
+		return nil, fmt.Errorf("node not found: %s", id)
+	}
+
+	dependents := make([]string, 0, len(n.dependents))
+	for depID := range n.dependents {
+		dependents = append(dependents, depID)
+	}
+	return dependents, nil
 }
 
-// SetState atomically sets the node's execution state.
-func (n *Node) SetState(s State) {
-	n.state.Store(int32(s))
-}
+// DetectCycles checks the graph for any cycles. It returns a non-nil error
+// if a cycle is found, indicating the first node involved in the detected cycle.
+func (g *Graph) DetectCycles() error {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
 
-// GetState atomically retrieves the node's execution state.
-func (n *Node) GetState() State {
-	return State(n.state.Load())
-}
+	// Use classic depth-first search with three sets of nodes:
+	// permanent: nodes that have been fully visited and are not part of a cycle.
+	// temporary: nodes currently in the recursion stack for the current traversal.
+	// unvisited: all other nodes.
+	permanent := make(map[string]bool)
+	temporary := make(map[string]bool)
 
-// Destroy executes the given cleanup function exactly once.
-func (n *Node) Destroy(f func()) {
-	n.destroyOnce.Do(f)
-}
+	var visit func(n *node) error
+	visit = func(n *node) error {
+		if permanent[n.id] {
+			return nil // Already visited and known to be safe.
+		}
+		if temporary[n.id] {
+			// We've hit a node that's already in our recursion stack, so we have a cycle.
+			return fmt.Errorf("cycle detected involving node '%s'", n.id)
+		}
 
-// Skip marks a node as failed, ensures its WaitGroup counter is decremented
-// exactly once, and returns true if it was the first time being skipped.
-func (n *Node) Skip(err error, wg *sync.WaitGroup) bool {
-	var wasSkipped bool
-	n.skipOnce.Do(func() {
-		n.SetState(Failed)
-		n.Error = err
-		wg.Done()
-		wasSkipped = true
-	})
-	return wasSkipped
-}
+		temporary[n.id] = true
 
-// SetInitialCounters sets the initial values for the node's atomic counters.
-// This should only be called during graph construction.
-func (n *Node) SetInitialCounters() {
-	n.depCount.Store(int32(len(n.Deps)))
-	if n.Type == ResourceNode {
-		var directStepDependents int32 = 0
-		for _, dependent := range n.Dependents {
-			if dependent.Type == StepNode {
-				directStepDependents++
+		for _, dependent := range n.dependents {
+			if err := visit(dependent); err != nil {
+				return err // Propagate the error up.
 			}
 		}
-		n.descendantCount.Store(directStepDependents)
+
+		// All dependents have been visited, so we can move this node from temporary to permanent.
+		delete(temporary, n.id)
+		permanent[n.id] = true
+
+		return nil
 	}
+
+	// Visit every node in the graph.
+	for _, n := range g.nodes {
+		if !permanent[n.id] {
+			if err := visit(n); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/executor"
 )
 
@@ -21,7 +21,7 @@ func (a *App) Run(ctx context.Context, appConfig *AppConfig) error {
 
 	a.logger.Debug("Building dependency graph from config model...")
 	// Pass the pre-loaded, format-agnostic config model to the DAG builder.
-	graph, err := dag.Build(ctx, a.config, a.registry)
+	graph, err := builder.BuildStatic(ctx, a.config, a.registry)
 	if err != nil {
 		return fmt.Errorf("failed to build dependency graph: %w", err)
 	}
@@ -30,17 +30,17 @@ func (a *App) Run(ctx context.Context, appConfig *AppConfig) error {
 	a.logger.Info("Step handlers registered:", "count", len(a.registry.HandlerRegistry), "keys", reflect.ValueOf(a.registry.HandlerRegistry).MapKeys())
 	a.logger.Info("Asset handlers registered:", "count", len(a.registry.AssetHandlerRegistry), "keys", reflect.ValueOf(a.registry.AssetHandlerRegistry).MapKeys())
 
-	if len(graph.Nodes) > 0 {
-		a.logger.Debug("Executor starting run.")
-		a.logger.Info("🚀 Starting concurrent execution...")
-		exec := executor.New(graph, appConfig.WorkerCount, a.registry, a.converter)
-		if err := exec.Run(ctx); err != nil {
-			return fmt.Errorf("execution failed: %w", err)
-		}
-		a.logger.Info("🏁 Execution finished.")
-	} else {
+	if len(graph.Nodes) == 0 {
 		a.logger.Warn("No nodes found in graph, execution not required.")
+		return nil
 	}
+
+	a.logger.Info("🚀 Starting concurrent execution...")
+	exec := executor.New(graph, appConfig.WorkerCount, a.registry, a.converter)
+	if err := exec.Execute(ctx); err != nil {
+		return fmt.Errorf("execution failed: %w", err)
+	}
+	a.logger.Info("🏁 Execution finished.")
 
 	a.logger.Debug("App.Run method finished.")
 	return nil

@@ -7,9 +7,9 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -27,7 +27,7 @@ var (
 )
 
 // buildEvalContext creates the HCL evaluation context for a node.
-func (e *Executor) buildEvalContext(ctx context.Context, node *dag.Node) *hcl.EvalContext {
+func (e *Executor) buildEvalContext(ctx context.Context, node *builder.Node) *hcl.EvalContext {
 	logger := ctxlog.FromContext(ctx)
 	logger.Debug("Building HCL evaluation context.", "node", node.ID)
 	vars := make(map[string]cty.Value)
@@ -38,7 +38,7 @@ func (e *Executor) buildEvalContext(ctx context.Context, node *dag.Node) *hcl.Ev
 	// First pass: collect outputs from ALL successfully completed steps in the graph.
 	logger.Debug("Starting to collect outputs from all completed graph nodes.")
 	for _, graphNode := range e.Graph.Nodes {
-		if graphNode.Type != dag.StepNode || graphNode.GetState() != dag.Done || graphNode.Output == nil {
+		if graphNode.Type != builder.StepNode || graphNode.GetState() != builder.Done || graphNode.Output == nil {
 			continue
 		}
 

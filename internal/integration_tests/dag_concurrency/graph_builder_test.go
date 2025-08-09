@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
@@ -36,7 +36,7 @@ func TestBuild_CycleDetection(t *testing.T) {
 	}
 
 	// Act: Attempt to create a graph, passing the new model.
-	_, err := dag.Build(context.Background(), model, registry.New())
+	_, err := builder.BuildStatic(context.Background(), model, registry.New())
 
 	// Assert: Check that an error indicating a cycle was returned.
 	if err == nil {

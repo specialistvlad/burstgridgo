@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/vk/burstgridgo/internal/app"
-	"github.com/vk/burstgridgo/internal/hcl"
+	"github.com/vk/burstgridgo/internal/hcl_adapter"
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
@@ -78,7 +78,7 @@ func RunIntegrationTestWithContext(ctx context.Context, t *testing.T, files map[
 	}
 
 	logBuffer := &SafeBuffer{}
-	loader := hcl.NewLoader()
+	loader := hcl_adapter.NewLoader()
 
 	var testApp *app.App
 	var panicErr any

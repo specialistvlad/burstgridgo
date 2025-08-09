@@ -7,15 +7,15 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/vk/burstgridgo/internal/builder"
 	"github.com/vk/burstgridgo/internal/config"
 	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/dag"
 	"github.com/vk/burstgridgo/internal/registry"
 )
 
 // Executor runs the tasks in a graph concurrently.
 type Executor struct {
-	Graph             *dag.Graph
+	Graph             *builder.Graph
 	wg                sync.WaitGroup
 	resourceInstances sync.Map
 	cleanupStack      []func()
@@ -27,7 +27,7 @@ type Executor struct {
 
 // New creates a new graph executor.
 func New(
-	graph *dag.Graph,
+	graph *builder.Graph,
 	numWorkers int,
 	reg *registry.Registry,
 	converter config.Converter,
@@ -43,13 +43,13 @@ func New(
 	}
 }
 
-// Run executes the entire graph concurrently and returns an error if any node fails.
+// Execute executes the entire graph concurrently and returns an error if any node fails.
 // It respects the cancellation signal from the provided context.
-func (e *Executor) Run(ctx context.Context) error {
+func (e *Executor) Execute(ctx context.Context) error {
 	logger := ctxlog.FromContext(ctx)
 	defer e.executeCleanupStack(ctx)
 
-	readyChan := make(chan *dag.Node, len(e.Graph.Nodes))
+	readyChan := make(chan *builder.Node, len(e.Graph.Nodes))
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -79,7 +79,7 @@ func (e *Executor) Run(ctx context.Context) error {
 	var failedNodes []string
 	var rootCauseError error
 	for _, node := range e.Graph.Nodes {
-		if node.GetState() == dag.Failed {
+		if node.GetState() == builder.Failed {
 			logger.Error("Node failed execution.", "nodeID", node.ID, "error", node.Error)
 			// Check if this node's error is a potential root cause.
 			// A "skipped" error is a symptom, not a cause.
