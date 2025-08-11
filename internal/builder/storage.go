@@ -58,7 +58,7 @@ func (graph *Storage) createNodes(ctx context.Context, grid *config.Grid) {
 				if err != nil {
 					panic(fmt.Sprintf("internal error: failed to parse generated static ID %q: %v", idStr, err))
 				}
-				var n = node.CreateStepNode(addr, s, false)
+				var n = node.CreateStepNode(addr, expandedS, false)
 				graph.Nodes[n.ID()] = n
 				graph.dag.AddNode(n.ID())
 			}
