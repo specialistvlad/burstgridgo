@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 	"github.com/zishang520/engine.io-client-go/transports"
 	"github.com/zishang520/engine.io/v2/types"
 	"github.com/zishang520/socket.io-client-go/socket"

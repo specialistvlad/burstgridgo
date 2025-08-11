@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/specialistvlad/burstgridgo/internal/testutil"
 	"github.com/stretchr/testify/require"
-	"github.com/vk/burstgridgo/internal/testutil"
 )
 
 // TestDagConcurrency_FanInSynchronizationTest validates that a fan-in node

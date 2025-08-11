@@ -2,14 +2,12 @@ package executor
 
 import (
 	"context"
-	"regexp"
 	"sort"
-	"strconv"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/node"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -21,15 +19,10 @@ type instanceOutput struct {
 	mode  config.InstancingMode
 }
 
-var (
-	// nodeIndexRegex is used to efficiently parse the instance index from a node ID.
-	nodeIndexRegex = regexp.MustCompile(`\[(\d+)\]$`)
-)
-
 // buildEvalContext creates the HCL evaluation context for a node.
-func (e *Executor) buildEvalContext(ctx context.Context, node *builder.Node) *hcl.EvalContext {
+func (e *Executor) buildEvalContext(ctx context.Context, currentNode *node.Node) *hcl.EvalContext {
 	logger := ctxlog.FromContext(ctx)
-	logger.Debug("Building HCL evaluation context.", "node", node.ID)
+	logger.Debug("Building HCL evaluation context.", "node", currentNode.ID())
 	vars := make(map[string]cty.Value)
 
 	// map[runner_type] -> map[instance_name] -> []instanceOutput
@@ -38,7 +31,7 @@ func (e *Executor) buildEvalContext(ctx context.Context, node *builder.Node) *hc
 	// First pass: collect outputs from ALL successfully completed steps in the graph.
 	logger.Debug("Starting to collect outputs from all completed graph nodes.")
 	for _, graphNode := range e.Graph.Nodes {
-		if graphNode.Type != builder.StepNode || graphNode.GetState() != builder.Done || graphNode.Output == nil {
+		if graphNode.Type != node.StepNode || graphNode.GetState() != node.Done || graphNode.Output == nil {
 			continue
 		}
 
@@ -62,12 +55,12 @@ func (e *Executor) buildEvalContext(ctx context.Context, node *builder.Node) *hc
 			}
 		} else {
 			// This is the original logic for non-placeholder (static count or single) nodes.
-			matches := nodeIndexRegex.FindStringSubmatch(graphNode.ID)
-			if len(matches) != 2 {
-				logger.Warn("Could not parse instance index from graph node ID, skipping for HCL context.", "graph_node_id", graphNode.ID)
+			lastSegment := graphNode.Address().Path[len(graphNode.Address().Path)-1]
+			if !lastSegment.HasIndex() {
+				logger.Warn("Could not parse instance index from graph node ID, skipping for HCL context.", "graph_node_id", graphNode.ID())
 				continue
 			}
-			index, _ := strconv.Atoi(matches[1])
+			index := lastSegment.Index
 
 			// For static instances, we wrap each individual output in an object.
 			outputWithWrapper := cty.ObjectVal(map[string]cty.Value{
@@ -151,18 +144,15 @@ func (e *Executor) buildEvalContext(ctx context.Context, node *builder.Node) *hc
 	vars["step"] = cty.ObjectVal(finalStepOutputs)
 
 	// Inject `count.index` for the *current* node that is executing.
-	if !node.IsPlaceholder {
-		matches := nodeIndexRegex.FindStringSubmatch(node.ID)
-		if len(matches) == 2 {
-			index, err := strconv.Atoi(matches[1])
-			if err == nil {
-				vars["count"] = cty.ObjectVal(map[string]cty.Value{
-					"index": cty.NumberIntVal(int64(index)),
-				})
-			}
+	if !currentNode.IsPlaceholder {
+		lastSegment := currentNode.Address().Path[len(currentNode.Address().Path)-1]
+		if lastSegment.HasIndex() {
+			vars["count"] = cty.ObjectVal(map[string]cty.Value{
+				"index": cty.NumberIntVal(int64(lastSegment.Index)),
+			})
 		}
 	}
 
-	logger.Debug("Finished building HCL evaluation context.", "node", node.ID)
+	logger.Debug("Finished building HCL evaluation context.", "node", currentNode.ID())
 	return &hcl.EvalContext{Variables: vars}
 }

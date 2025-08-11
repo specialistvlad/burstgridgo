@@ -2,118 +2,49 @@ package builder
 
 import (
 	"context"
-	"sync"
+	"fmt"
 
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/dag"
+	"github.com/specialistvlad/burstgridgo/internal/node"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
-// Dependencies returns a slice of Nodes that the given node directly depends on.
-// It queries the underlying generic DAG and converts the returned string IDs into
-// rich *Node pointers used by the application.
-func (g *Graph) Dependencies(nodeID string) ([]*Node, error) {
-	depIDs, err := g.dag.Dependencies(nodeID)
-	if err != nil {
+// BuildStatic constructs a complete, validated dependency graph from a config model.
+func BuildStatic(ctx context.Context, model *config.Model, r *registry.Registry) (*Storage, error) {
+	logger := ctxlog.FromContext(ctx)
+	logger.Debug("Build: Starting graph construction.")
+	graph := &Storage{
+		Nodes: make(map[string]*node.Node),
+		dag:   dag.New(),
+	}
+
+	// First pass: create all Nodes for steps and resources.
+	graph.createNodes(ctx, model.Grid)
+	logger.Debug("Build: Node creation complete.", "Node_count", len(graph.Nodes))
+
+	// Second pass: link dependencies.
+	if err := graph.linkNodes(ctx, model, r); err != nil {
 		return nil, err
 	}
-	deps := make([]*Node, 0, len(depIDs))
-	for _, id := range depIDs {
-		// This lookup is safe because the graph is static after being built.
-		if node, ok := g.Nodes[id]; ok {
-			deps = append(deps, node)
+	logger.Debug("Build: Node linking complete.")
+
+	// Third pass: initialize counters.
+	logger.Debug("Build: Initializing Node counters from graph topology.")
+	for _, Node := range graph.Nodes {
+		if err := graph.SetInitialCounters(ctx, Node); err != nil {
+			return nil, fmt.Errorf("failed to initialize counters for Node %s: %w", Node.ID(), err)
 		}
 	}
-	return deps, nil
-}
+	logger.Debug("Build: Counter initialization complete.")
 
-// Dependents returns a slice of Nodes that directly depend on the given node.
-// It queries the underlying generic DAG and converts the returned string IDs into
-// rich *Node pointers used by the application.
-func (g *Graph) Dependents(nodeID string) ([]*Node, error) {
-	depIDs, err := g.dag.Dependents(nodeID)
-	if err != nil {
-		return nil, err
+	// Final validation: Cycle detection.
+	if err := graph.dag.DetectCycles(); err != nil {
+		return nil, fmt.Errorf("error validating dependency graph: %w", err)
 	}
-	deps := make([]*Node, 0, len(depIDs))
-	for _, id := range depIDs {
-		// This lookup is safe because the graph is static after being built.
-		if node, ok := g.Nodes[id]; ok {
-			deps = append(deps, node)
-		}
-	}
-	return deps, nil
-}
+	logger.Debug("Build: Cycle detection passed.")
 
-// DepCount atomically returns the current number of unmet dependencies.
-func (n *Node) DepCount() int32 {
-	return n.depCount.Load()
-}
-
-// DecrementDepCount atomically decrements the dependency counter and returns the new value.
-func (n *Node) DecrementDepCount() int32 {
-	return n.depCount.Add(-1)
-}
-
-// DecrementDescendantCount atomically decrements the resource descendant counter.
-func (n *Node) DecrementDescendantCount() int32 {
-	return n.descendantCount.Add(-1)
-}
-
-// SetState atomically sets the node's execution state.
-func (n *Node) SetState(s State) {
-	n.state.Store(int32(s))
-}
-
-// GetState atomically retrieves the node's execution state.
-func (n *Node) GetState() State {
-	return State(n.state.Load())
-}
-
-// Destroy executes the given cleanup function exactly once, making it safe to
-// call multiple times.
-func (n *Node) Destroy(f func()) {
-	n.destroyOnce.Do(f)
-}
-
-// Skip marks a node as failed and decrements its WaitGroup counter. It uses a
-// sync.Once to guarantee this happens only once, returning true if it was the
-// first time this node was skipped.
-func (n *Node) Skip(err error, wg *sync.WaitGroup) bool {
-	var wasSkipped bool
-	n.skipOnce.Do(func() {
-		n.SetState(Failed)
-		n.Error = err
-		wg.Done()
-		wasSkipped = true
-	})
-	return wasSkipped
-}
-
-// SetInitialCounters prepares a node for the executor by setting its atomic
-// counters based on the final graph topology.
-func (n *Node) SetInitialCounters(ctx context.Context, g *Graph) error {
-	logger := ctxlog.FromContext(ctx).With("node_id", n.ID)
-
-	deps, err := g.Dependencies(n.ID)
-	if err != nil {
-		return err
-	}
-	depCount := int32(len(deps))
-	n.depCount.Store(depCount)
-	logger.Debug("Initialized dependency counter.", "count", depCount)
-
-	if n.Type == ResourceNode {
-		dependents, err := g.Dependents(n.ID)
-		if err != nil {
-			return err
-		}
-		var directStepDependents int32 = 0
-		for _, dependent := range dependents {
-			if dependent.Type == StepNode {
-				directStepDependents++
-			}
-		}
-		n.descendantCount.Store(directStepDependents)
-		logger.Debug("Initialized resource descendant counter.", "count", directStepDependents)
-	}
-	return nil
+	logger.Info("Build: Graph construction successful.")
+	return graph, nil
 }

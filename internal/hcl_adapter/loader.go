@@ -9,8 +9,8 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
 )
 
 // Loader is the HCL-specific implementation of the config.Loader interface.

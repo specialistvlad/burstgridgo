@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
 )
 
 // translateStep converts the HCL-specific step schema into the agnostic model.

@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/specialistvlad/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/testutil"
 	"github.com/stretchr/testify/require"
-	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/testutil"
 )
 
 // --- Structs and Module for Runtime Failure Test ---

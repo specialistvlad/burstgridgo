@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/builder"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
 func TestBuild_CycleDetection(t *testing.T) {

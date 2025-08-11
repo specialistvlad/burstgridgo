@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
 // MockSleeperModule is a shared, self-contained module for concurrency tests.

@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/vk/burstgridgo/internal/app"
+	"github.com/specialistvlad/burstgridgo/internal/app"
 )
 
 // ExitError is a custom error type that includes a specific exit code.

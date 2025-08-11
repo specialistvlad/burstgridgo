@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
 // Module implements the registry.Module interface for this package.

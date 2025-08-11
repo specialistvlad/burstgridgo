@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/specialistvlad/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/testutil"
 	"github.com/stretchr/testify/require"
-	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/internal/testutil"
 )
 
 // mockCreateOnceModule registers a resource that counts its creation calls.

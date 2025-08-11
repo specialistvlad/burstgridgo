@@ -1,4 +1,4 @@
-module github.com/vk/burstgridgo
+module github.com/specialistvlad/burstgridgo
 
 go 1.24.5
 

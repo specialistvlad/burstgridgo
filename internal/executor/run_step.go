@@ -6,14 +6,14 @@ import (
 	"reflect"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/node"
 	"github.com/zclconf/go-cty/cty"
 )
 
 // runPlaceholderNode handles the runtime expansion and execution of a dynamic step.
-func (e *Executor) runPlaceholderNode(ctx context.Context, node *builder.Node) error {
-	logger := ctxlog.FromContext(ctx).With("step", node.ID)
+func (e *Executor) runPlaceholderNode(ctx context.Context, node *node.Node) error {
+	logger := ctxlog.FromContext(ctx).With("step", node.ID())
 	logger.Info("▶️ Expanding dynamic step")
 
 	// 1. Evaluate the count expression
@@ -23,13 +23,13 @@ func (e *Executor) runPlaceholderNode(ctx context.Context, node *builder.Node) e
 		return diags
 	}
 	if val.Type() != cty.Number {
-		return fmt.Errorf("count for step %s must be a number, but got %s", node.ID, val.Type().FriendlyName())
+		return fmt.Errorf("count for step %s must be a number, but got %s", node.ID(), val.Type().FriendlyName())
 	}
 	countBf, _ := val.AsBigFloat().Int64()
 	count := int(countBf)
 
 	if count < 0 {
-		return fmt.Errorf("count for step %s cannot be negative, got %d", node.ID, count)
+		return fmt.Errorf("count for step %s cannot be negative, got %d", node.ID(), count)
 	}
 
 	logger.Debug("Dynamic count resolved.", "count", count)
@@ -43,7 +43,7 @@ func (e *Executor) runPlaceholderNode(ctx context.Context, node *builder.Node) e
 	// 2. Loop and execute each instance, collecting outputs.
 	outputs := make([]cty.Value, 0, count)
 	for i := 0; i < count; i++ {
-		instanceID := fmt.Sprintf("%s[%d]", node.ID, i)
+		instanceID := fmt.Sprintf("%s[%d]", node.ID(), i)
 		instanceEvalCtx := evalCtx.NewChild()
 		instanceEvalCtx.Variables = make(map[string]cty.Value)
 		instanceEvalCtx.Variables["count"] = cty.ObjectVal(map[string]cty.Value{
@@ -53,7 +53,7 @@ func (e *Executor) runPlaceholderNode(ctx context.Context, node *builder.Node) e
 		// Execute the core logic for this single instance.
 		output, err := e.executeStepLogic(ctx, node, instanceEvalCtx, instanceID)
 		if err != nil {
-			return fmt.Errorf("instance %s of step %s failed: %w", instanceID, node.ID, err)
+			return fmt.Errorf("instance %s of step %s failed: %w", instanceID, node.ID(), err)
 		}
 		outputs = append(outputs, output.(cty.Value))
 	}
@@ -66,9 +66,9 @@ func (e *Executor) runPlaceholderNode(ctx context.Context, node *builder.Node) e
 }
 
 // runStepNode handles the execution of a single, non-placeholder step node.
-func (e *Executor) runStepNode(ctx context.Context, node *builder.Node) error {
+func (e *Executor) runStepNode(ctx context.Context, node *node.Node) error {
 	evalCtx := e.buildEvalContext(ctx, node)
-	output, err := e.executeStepLogic(ctx, node, evalCtx, node.ID)
+	output, err := e.executeStepLogic(ctx, node, evalCtx, node.ID())
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (e *Executor) runStepNode(ctx context.Context, node *builder.Node) error {
 }
 
 // executeStepLogic contains the shared logic for running a step's handler.
-func (e *Executor) executeStepLogic(ctx context.Context, node *builder.Node, evalCtx *hcl.EvalContext, instanceID string) (any, error) {
+func (e *Executor) executeStepLogic(ctx context.Context, node *node.Node, evalCtx *hcl.EvalContext, instanceID string) (any, error) {
 	logger := ctxlog.FromContext(ctx).With("step", instanceID)
 	logger.Info("▶️ Starting step instance")
 

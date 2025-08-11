@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/node"
 )
 
 // runResourceNode handles the creation of a stateful resource.
-func (e *Executor) runResourceNode(ctx context.Context, node *builder.Node) error {
-	logger := ctxlog.FromContext(ctx).With("resource", node.ID)
+func (e *Executor) runResourceNode(ctx context.Context, node *node.Node) error {
+	logger := ctxlog.FromContext(ctx).With("resource", node.ID())
 	logger.Info("▶️ Creating resource")
 	logger.Debug("Executing resource node.")
 
@@ -39,7 +39,7 @@ func (e *Executor) runResourceNode(ctx context.Context, node *builder.Node) erro
 		evalCtx := e.buildEvalContext(ctx, node)
 		err := e.converter.DecodeBody(ctx, inputStruct, node.ResourceConfig.Arguments, assetDef.Inputs, evalCtx)
 		if err != nil {
-			return fmt.Errorf("failed to decode arguments for resource %s: %w", node.ID, err)
+			return fmt.Errorf("failed to decode arguments for resource %s: %w", node.ID(), err)
 		}
 	}
 
@@ -52,11 +52,11 @@ func (e *Executor) runResourceNode(ctx context.Context, node *builder.Node) erro
 	}
 
 	node.Output = resourceObj
-	e.resourceInstances.Store(node.ID, resourceObj)
+	e.resourceInstances.Store(node.ID(), resourceObj)
 	e.pushCleanup(node, func() {
 		logger.Info("🔥 Destroying resource")
 		reflect.ValueOf(destroyFn.DestroyFn).Call([]reflect.Value{reflect.ValueOf(resourceObj)})
-		e.resourceInstances.Delete(node.ID)
+		e.resourceInstances.Delete(node.ID())
 	})
 
 	logger.Info("✅ Resource created")

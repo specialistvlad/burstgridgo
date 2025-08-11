@@ -5,9 +5,10 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/node"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -51,7 +52,7 @@ func parseStepTraversal(traversal hcl.Traversal) (*parsedStepRef, bool) {
 }
 
 // linkImplicitDeps parses an expression for variable traversals to create dependency links.
-func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, model *config.Model, graph *Graph, r *registry.Registry) error {
+func (graph *Storage) linkImplicitDeps(ctx context.Context, Node *node.Node, expr hcl.Expression, model *config.Model, r *registry.Registry) error {
 	baseLogger := ctxlog.FromContext(ctx)
 
 	stepConfigMap := make(map[string]*config.Step)
@@ -61,7 +62,7 @@ func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, mode
 	}
 
 	for _, traversal := range expr.Variables() {
-		logger := baseLogger.With("node_id", node.ID, "traversal", formatTraversal(traversal))
+		logger := baseLogger.With("Node_id", Node.ID(), "traversal", formatTraversal(traversal))
 
 		if ref, ok := parseStepTraversal(traversal); ok {
 			logger.Debug("Parsed implicit dependency as step reference.", "ref_name", ref.FullName, "ref_index", ref.Index)
@@ -72,29 +73,29 @@ func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, mode
 				continue
 			}
 
-			var depNode *Node
-			var nodeFound bool
+			var depNode *node.Node
+			var NodeFound bool
 
 			if ref.Index == -1 {
 				logger.Debug("Handling shorthand implicit reference.", "instancing_mode", depStepConfig.Instancing)
 				placeholderID := fmt.Sprintf("step.%s", ref.FullName)
 				if pNode, pFound := graph.Nodes[placeholderID]; pFound && pNode.IsPlaceholder {
 					depNode = pNode
-					nodeFound = true
+					NodeFound = true
 				} else {
 					if depStepConfig.Instancing == config.ModeInstanced {
-						return fmt.Errorf("ambiguous implicit dependency in '%s': expression refers to instanced step '%s' without an index", node.ID, ref.FullName)
+						return fmt.Errorf("ambiguous implicit dependency in '%s': expression refers to instanced step '%s' without an index", Node.ID(), ref.FullName)
 					}
 					depNodeID := fmt.Sprintf("step.%s[0]", ref.FullName)
-					depNode, nodeFound = graph.Nodes[depNodeID]
+					depNode, NodeFound = graph.Nodes[depNodeID]
 				}
 			} else {
 				depNodeID := fmt.Sprintf("step.%s[%d]", ref.FullName, ref.Index)
-				depNode, nodeFound = graph.Nodes[depNodeID]
+				depNode, NodeFound = graph.Nodes[depNodeID]
 			}
 
-			if !nodeFound || depNode == nil {
-				logger.Debug("Implicit dependency reference did not resolve to a known graph node.", "ref_full_name", ref.FullName)
+			if !NodeFound || depNode == nil {
+				logger.Debug("Implicit dependency reference did not resolve to a known graph Node.", "ref_full_name", ref.FullName)
 				continue
 			}
 
@@ -102,8 +103,8 @@ func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, mode
 				return err
 			}
 
-			logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depNode.ID)
-			if err := graph.dag.AddEdge(depNode.ID, node.ID); err != nil {
+			logger.Debug("Linking implicit dependency.", "from", Node.ID(), "to", depNode.ID())
+			if err := graph.dag.AddEdge(depNode.ID(), Node.ID()); err != nil {
 				return fmt.Errorf("error linking implicit dependency: %w", err)
 			}
 			// Legacy map population removed here.
@@ -116,8 +117,8 @@ func linkImplicitDeps(ctx context.Context, node *Node, expr hcl.Expression, mode
 			if typeOk && nameOk {
 				depID := fmt.Sprintf("resource.%s.%s", typeAttr.Name, nameAttr.Name)
 				if depNode, ok := graph.Nodes[depID]; ok {
-					logger.Debug("Linking implicit dependency.", "from", node.ID, "to", depID)
-					if err := graph.dag.AddEdge(depNode.ID, node.ID); err != nil {
+					logger.Debug("Linking implicit dependency.", "from", Node.ID(), "to", depID)
+					if err := graph.dag.AddEdge(depNode.ID(), Node.ID()); err != nil {
 						return fmt.Errorf("error linking implicit dependency: %w", err)
 					}
 					// Legacy map population removed here.

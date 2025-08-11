@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
 // NoOpModule is a helper that satisfies the TestModule interface and

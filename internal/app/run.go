@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/executor"
+	"github.com/specialistvlad/burstgridgo/internal/builder"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/executor"
 )
 
 // Run executes the main application logic based on the provided configuration.

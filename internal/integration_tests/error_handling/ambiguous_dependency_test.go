@@ -3,8 +3,8 @@ package integration_tests
 import (
 	"testing"
 
+	"github.com/specialistvlad/burstgridgo/internal/testutil"
 	"github.com/stretchr/testify/require"
-	"github.com/vk/burstgridgo/internal/testutil"
 )
 
 func TestErrorHandling_AmbiguousImplicitDependency(t *testing.T) {

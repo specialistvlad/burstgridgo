@@ -4,12 +4,12 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/node"
 )
 
 // pushCleanup adds a function to the LIFO cleanup stack.
-func (e *Executor) pushCleanup(node *builder.Node, f func()) {
+func (e *Executor) pushCleanup(node *node.Node, f func()) {
 	e.cleanupMutex.Lock()
 	defer e.cleanupMutex.Unlock()
 	e.cleanupStack = append(e.cleanupStack, func() {
@@ -30,14 +30,14 @@ func (e *Executor) executeCleanupStack(ctx context.Context) {
 }
 
 // destroyResource handles the efficient, runtime destruction of a resource.
-func (e *Executor) destroyResource(ctx context.Context, node *builder.Node) {
+func (e *Executor) destroyResource(ctx context.Context, node *node.Node) {
 	logger := ctxlog.FromContext(ctx)
-	instance, found := e.resourceInstances.Load(node.ID)
+	instance, found := e.resourceInstances.Load(node.ID())
 	if !found {
 		return
 	}
 
-	resourceLogger := logger.With("resource", node.ID)
+	resourceLogger := logger.With("resource", node.ID())
 	assetDef := e.registry.AssetDefinitionRegistry[node.ResourceConfig.AssetType]
 	if assetDef == nil || assetDef.Lifecycle == nil {
 		resourceLogger.Warn("Cannot destroy resource efficiently: asset definition or lifecycle not found.")
@@ -55,7 +55,7 @@ func (e *Executor) destroyResource(ctx context.Context, node *builder.Node) {
 	cleanupFunc := func() {
 		resourceLogger.Info("🔥 Destroying resource")
 		reflect.ValueOf(destroyHandler.DestroyFn).Call([]reflect.Value{reflect.ValueOf(instance)})
-		e.resourceInstances.Delete(node.ID)
+		e.resourceInstances.Delete(node.ID())
 	}
 
 	node.Destroy(cleanupFunc)

@@ -6,9 +6,9 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
 // AppConfig holds all the necessary configuration for an App instance to run.

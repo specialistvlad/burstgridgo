@@ -29,6 +29,9 @@ The system is composed of several interlocking packages that manage the applicat
 
 * **1. Foundational Packages:**
     * **`registry`**: Provides the central `Registry` struct that holds mappings between definition names and their Go implementations. Modules use this to register their functionality.
+    * **`nodeid`**: Provides a structured, type-safe representation for node identifiers (`nodeid.Address`). It centralizes all parsing, formatting, and validation of IDs (e.g., `step.http_client.get_user[0]`), eliminating fragile string manipulation throughout the rest of the application.
+    * **`node`**: Defines the `node.Node` struct, the core data structure representing a single vertex in the execution graph. It encapsulates a node's configuration, its structured ID (`nodeid.Address`), its current state, and its execution result.
+    * **`dag`**: Provides a **generic, thread-safe implementation** of a Directed Acyclic Graph. It is only concerned with the graph's topology (the relationships between vertices) and operates on simple `string` identifiers. It provides core functionalities like adding nodes/edges and cycle detection.
 
 * **2. Module Author Defines:**
     * **Manifest File** (`.hcl`): Defines the public API of a 'runner' or 'asset'.
@@ -41,10 +44,10 @@ The system is composed of several interlocking packages that manage the applicat
 
 * **4. Engine on Run (Core Packages):**
     * **`config`**: Defines the **format-agnostic** configuration `Model` and the core `Loader` and `Converter` interfaces. This is the pure data model the rest of the engine works with.
-    * **`hcl`**: Provides the concrete **HCL implementation** of the `config.Loader` and `config.Converter` interfaces. It's responsible for all file parsing and HCL-specific data binding, encapsulating all HCL parsing structs internally.
+    * **`hcl`**: Provides the concrete **HCL implementation** of the `config.Loader` and `config.Converter` interfaces. It's responsible for all file parsing and HCL-specific data binding.
     * **`app`**: The main application orchestrator. It initializes a `config.Loader` (e.g., the `hcl.Loader`), drives the loading process, and manages the overall execution flow.
-    * **`dag`**: The graph-building layer. It takes the **format-agnostic `config.Model`** and builds a validated execution graph. **It does not run the graph.**
-    * **`executor`**: The execution layer. It takes a pre-built graph and manages its concurrent execution. It uses the `config.Converter` to perform just-in-time data binding by reading the `bggo` tags from the module's Go struct via reflection.
+    * **`builder`**: The graph construction layer. It takes the format-agnostic `config.Model`, creates a `node.Node` for each step/resource (each with a structured `nodeid.Address`), and uses the `dag` package to assemble them into a final, validated execution graph.
+    * **`executor`**: The execution layer. It takes a pre-built graph from the `builder` and manages its concurrent execution. It uses the `config.Converter` to perform just-in-time data binding.
 
 ---
 
@@ -65,12 +68,21 @@ The sequence is as follows:
 
 2.  **Module Registration & Parity Validation**:
     * This is a two-part static validation step:
-      * **Handler-Manifest Linking**: The engine ensures that every lifecycle handler named in a manifest (e.g., `lifecycle { on_run = "OnRunMyModule" }`) corresponds to a Go handler that was actually registered in the `registry`.
-      * **Input/Type Parity**: The engine performs a strict parity check (`registry.ValidateRegistry()`) between the manifest and the Go `Input` struct. This validation is twofold:
-        * **Presence**: It ensures every `input` block in the manifest has a corresponding `bggo:"..."` tagged field in the Go struct, and vice-versa.
-        * **Type**: It ensures the `type` declared in the manifest (e.g., `type = list(number)`) is compatible with the type of the Go field (e.g., `[]int`). **This validation is fully recursive, checking the entire shape and all attribute types of nested objects.** If they are not compatible, the application will fail to start.
+        * **Handler-Manifest Linking**: The engine ensures that every lifecycle handler named in a manifest (e.g., `lifecycle { on_run = "OnRunMyModule" }`) corresponds to a Go handler that was actually registered in the `registry`.
+        * **Input/Type Parity**: The engine performs a strict parity check (`registry.ValidateRegistry()`) between the manifest and the Go `Input` struct. This validation is twofold:
+            * **Presence**: It ensures every `input` block in the manifest has a corresponding `bggo:"..."` tagged field in the Go struct, and vice-versa.
+            * **Type**: It ensures the `type` declared in the manifest (e.g., `type = list(number)`) is compatible with the type of the Go field (e.g., `[]int`). **This validation is fully recursive, checking the entire shape and all attribute types of nested objects.** If they are not compatible, the application will fail to start.
 
-### Phase 2: Per-Step Runtime Pipeline
+### Phase 2: Graph Construction
+
+This phase is orchestrated by the `builder` package and bridges the gap between the static configuration model and the executable graph.
+
+1.  **Node Instantiation**: The `builder` iterates over all `step` and `resource` blocks in the `config.Model`. For each, it creates a corresponding `node.Node` struct.
+2.  **ID Assignment (`ADR-014`)**: During instantiation, each `node.Node` is assigned a unique, structured `nodeid.Address`. This ensures that from the moment of its creation, every node has a valid, parseable identifier.
+3.  **Dependency Linking**: The `builder` inspects each node's `depends_on` block (for explicit dependencies) and all HCL expressions in its arguments (for implicit dependencies, like `${step.A.output}`). It translates these references into directed edges in the graph, using the generic `dag` package to manage the topology.
+4.  **Topological Validation**: Once all nodes and edges are in place, the `builder` calls the `dag` package's cycle detection algorithm. If a cycle is found (e.g., A depends on B, and B depends on A), the application fails to start with a clear error.
+
+### Phase 3: Per-Step Runtime Pipeline
 
 This pipeline is executed by the `executor` for **every `step` node** in the directed acyclic graph (DAG) during a run. It describes the "just-in-time" process of preparing data for, validating, and executing a module's business logic.
 
@@ -109,5 +121,6 @@ The sequence is as follows:
     * The converter translates this native struct back into the engine's internal representation (e.g., a `cty.Value` object). It inspects the `cty:"..."` tags on the struct's fields to ensure the output can be correctly used by downstream steps that depend on it.
 
 ### Future Work
+
 * **`ADR-012` (Planned)**: Introduce support for **meta-arguments** (`count`, `for_each`) to allow dynamic creation of multiple step and resource instances.
 * Declarative features like `validation {}` blocks and sensitive input handling will be built on top of this type system in subsequent ADRs.

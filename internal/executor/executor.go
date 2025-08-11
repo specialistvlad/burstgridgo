@@ -7,15 +7,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/builder"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/node"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
 // Executor runs the tasks in a graph concurrently.
 type Executor struct {
-	Graph             *builder.Graph
+	Graph             *builder.Storage
 	wg                sync.WaitGroup
 	resourceInstances sync.Map
 	cleanupStack      []func()
@@ -27,7 +28,7 @@ type Executor struct {
 
 // New creates a new graph executor.
 func New(
-	graph *builder.Graph,
+	graph *builder.Storage,
 	numWorkers int,
 	reg *registry.Registry,
 	converter config.Converter,
@@ -49,7 +50,7 @@ func (e *Executor) Execute(ctx context.Context) error {
 	logger := ctxlog.FromContext(ctx)
 	defer e.executeCleanupStack(ctx)
 
-	readyChan := make(chan *builder.Node, len(e.Graph.Nodes))
+	readyChan := make(chan *node.Node, len(e.Graph.Nodes))
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -57,7 +58,7 @@ func (e *Executor) Execute(ctx context.Context) error {
 	rootNodeCount := 0
 	for _, node := range e.Graph.Nodes {
 		if node.DepCount() == 0 {
-			logger.Debug("Found root node.", "nodeID", node.ID)
+			logger.Debug("Found root node.", "nodeID", node.ID())
 			readyChan <- node
 			rootNodeCount++
 		}
@@ -78,16 +79,16 @@ func (e *Executor) Execute(ctx context.Context) error {
 
 	var failedNodes []string
 	var rootCauseError error
-	for _, node := range e.Graph.Nodes {
-		if node.GetState() == builder.Failed {
-			logger.Error("Node failed execution.", "nodeID", node.ID, "error", node.Error)
+	for _, n := range e.Graph.Nodes {
+		if n.GetState() == node.Failed {
+			logger.Error("Node failed execution.", "nodeID", n.ID(), "error", n.Error)
 			// Check if this node's error is a potential root cause.
 			// A "skipped" error is a symptom, not a cause.
-			if node.Error != nil && !strings.HasPrefix(node.Error.Error(), "skipped") && !errors.Is(node.Error, context.Canceled) {
-				failedNodes = append(failedNodes, node.ID)
+			if n.Error != nil && !strings.HasPrefix(n.Error.Error(), "skipped") && !errors.Is(n.Error, context.Canceled) {
+				failedNodes = append(failedNodes, n.ID())
 				// Prioritize the first "real" error as the root cause.
 				if rootCauseError == nil {
-					rootCauseError = node.Error
+					rootCauseError = n.Error
 				}
 			}
 		}

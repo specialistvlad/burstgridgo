@@ -1,6 +1,6 @@
 package testutil
 
-import "github.com/vk/burstgridgo/internal/registry"
+import "github.com/specialistvlad/burstgridgo/internal/registry"
 
 // SimpleModule is a test helper for easily creating a mock module that
 // registers a single runner or asset handler.

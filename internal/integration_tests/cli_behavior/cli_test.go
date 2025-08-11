@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/specialistvlad/burstgridgo/internal/app"
+	"github.com/specialistvlad/burstgridgo/internal/cli"
 	"github.com/stretchr/testify/require"
-	"github.com/vk/burstgridgo/internal/app"
-	"github.com/vk/burstgridgo/internal/cli"
 )
 
 func TestParse(t *testing.T) {

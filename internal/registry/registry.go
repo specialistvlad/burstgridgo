@@ -3,7 +3,7 @@ package registry
 import (
 	"reflect"
 
-	"github.com/vk/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/config"
 )
 
 // Module is the interface that all core modules must implement to be registered.

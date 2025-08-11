@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vk/burstgridgo/internal/cli"
+	"github.com/specialistvlad/burstgridgo/internal/cli"
 )
 
 // Test for: displays help

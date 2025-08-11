@@ -8,12 +8,12 @@ The primary artifact produced by this package is a validated, ready-to-run *Grap
 The graph construction is a multi-phase process:
 
  1. Node Creation: The builder iterates through the configuration's steps and
-    resources, creating a corresponding *Node for each one. This phase populates the
+    resources, creating a corresponding *node.Node for each one. This phase populates the
     graph with its vertices but does not yet establish their relationships.
 
  2. Dependency Linking: The builder analyzes the `depends_on` attributes (explicit
     dependencies) and variable references within expressions (implicit dependencies)
-    for each node. It uses this analysis to create directed edges in the graph,
+    for each Node. It uses this analysis to create directed edges in the graph,
     forming a complete dependency topology. This work is delegated to the generic,
     thread-safe `dag` package.
 
@@ -21,11 +21,11 @@ The graph construction is a multi-phase process:
     performs two final actions:
     a. It invokes the DAG's cycle detection algorithm to ensure the graph is
     acyclic and thus executable.
-    b. It initializes scheduler-critical counters on each node (e.g., the number
+    b. It initializes scheduler-critical counters on each Node (e.g., the number
     of unmet dependencies), preparing the graph for the executor.
 
 Upon successful completion, the builder hands off the fully constructed and
 validated *Graph to the executor, which is then responsible for orchestrating
-the execution of the nodes.
+the execution of the Nodes.
 */
 package builder

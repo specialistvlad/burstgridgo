@@ -9,10 +9,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/specialistvlad/burstgridgo/internal/app"
+	"github.com/specialistvlad/burstgridgo/internal/hcl_adapter"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 	"github.com/stretchr/testify/require"
-	"github.com/vk/burstgridgo/internal/app"
-	"github.com/vk/burstgridgo/internal/hcl_adapter"
-	"github.com/vk/burstgridgo/internal/registry"
 )
 
 // SafeBuffer is a thread-safe buffer for capturing log output in tests.

@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/vk/burstgridgo/internal/config"
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/config"
+	"github.com/specialistvlad/burstgridgo/internal/node"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -74,8 +75,8 @@ func parseDepAddress(addr string) (*depAddress, error) {
 }
 
 // validateOutputReference checks if a reference to a step's output is valid.
-func validateOutputReference(traversal hcl.Traversal, depNode *Node, r *registry.Registry) error {
-	if depNode.Type != StepNode || len(traversal) < 5 {
+func validateOutputReference(traversal hcl.Traversal, depNode *node.Node, r *registry.Registry) error {
+	if depNode.Type != node.StepNode || len(traversal) < 5 {
 		return nil // Not a step output reference we need to validate.
 	}
 
@@ -94,7 +95,7 @@ func validateOutputReference(traversal hcl.Traversal, depNode *Node, r *registry
 		return nil // Found a valid declaration.
 	}
 
-	return fmt.Errorf("reference to undeclared output %q on step %q", outputName, depNode.ID)
+	return fmt.Errorf("reference to undeclared output %q on step %q", outputName, depNode.ID())
 }
 
 // expandStep analyzes a step's instancing configuration. It returns a slice of

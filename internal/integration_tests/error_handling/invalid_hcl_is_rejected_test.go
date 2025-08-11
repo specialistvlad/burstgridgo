@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/specialistvlad/burstgridgo/internal/testutil"
 	"github.com/stretchr/testify/require"
-	"github.com/vk/burstgridgo/internal/testutil"
 )
 
 // TestErrorHandling_InvalidHCL_IsRejected validates that the application panics

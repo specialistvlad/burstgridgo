@@ -1,12 +1,12 @@
 package app
 
 import (
-	"github.com/vk/burstgridgo/internal/registry"
-	"github.com/vk/burstgridgo/modules/env_vars"
-	"github.com/vk/burstgridgo/modules/http_client"
-	"github.com/vk/burstgridgo/modules/print"
-	"github.com/vk/burstgridgo/modules/s3"
-	"github.com/vk/burstgridgo/modules/socketio"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/modules/env_vars"
+	"github.com/specialistvlad/burstgridgo/modules/http_client"
+	"github.com/specialistvlad/burstgridgo/modules/print"
+	"github.com/specialistvlad/burstgridgo/modules/s3"
+	"github.com/specialistvlad/burstgridgo/modules/socketio"
 )
 
 // coreModules is the definitive list of all modules that are compiled into

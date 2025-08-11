@@ -7,19 +7,19 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/vk/burstgridgo/internal/builder"
-	"github.com/vk/burstgridgo/internal/ctxlog"
-	"github.com/vk/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/node"
+	"github.com/specialistvlad/burstgridgo/internal/registry"
 )
 
 // buildDepsStruct populates the `deps` struct for a step handler.
-func (e *Executor) buildDepsStruct(ctx context.Context, node *builder.Node, handler *registry.RegisteredRunner) (any, error) {
+func (e *Executor) buildDepsStruct(ctx context.Context, node *node.Node, handler *registry.RegisteredRunner) (any, error) {
 	logger := ctxlog.FromContext(ctx)
-	logger.Debug("Building dependency struct.", "step", node.ID)
+	logger.Debug("Building dependency struct.", "step", node.ID())
 	depsStruct := handler.NewDeps()
 
 	if node.StepConfig.Uses == nil {
-		logger.Debug("Step has no 'uses' block, returning empty deps.", "step", node.ID)
+		logger.Debug("Step has no 'uses' block, returning empty deps.", "step", node.ID())
 		return depsStruct, nil
 	}
 
@@ -29,7 +29,7 @@ func (e *Executor) buildDepsStruct(ctx context.Context, node *builder.Node, hand
 
 	for i := 0; i < depsValue.NumField(); i++ {
 		field := depsType.Field(i)
-		fieldLogger := logger.With("step", node.ID, "go_field", field.Name)
+		fieldLogger := logger.With("step", node.ID(), "go_field", field.Name)
 
 		tag := field.Tag.Get("bggo")
 		if tag == "" || tag == "-" {
@@ -61,7 +61,7 @@ func (e *Executor) buildDepsStruct(ctx context.Context, node *builder.Node, hand
 
 		instance, found := e.resourceInstances.Load(resourceID)
 		if !found {
-			return nil, fmt.Errorf("step '%s' requires resource '%s', which has not been created", node.ID, resourceID)
+			return nil, fmt.Errorf("step '%s' requires resource '%s', which has not been created", node.ID(), resourceID)
 		}
 
 		instanceType := reflect.TypeOf(instance)
@@ -83,7 +83,7 @@ func (e *Executor) buildDepsStruct(ctx context.Context, node *builder.Node, hand
 		depsValue.Field(i).Set(reflect.ValueOf(instance))
 	}
 
-	logger.Debug("Successfully built dependency struct.", "step", node.ID)
+	logger.Debug("Successfully built dependency struct.", "step", node.ID())
 	return depsStruct, nil
 }
 

@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/vk/burstgridgo/internal/app"
-	"github.com/vk/burstgridgo/internal/cli"
-	"github.com/vk/burstgridgo/internal/hcl_adapter"
+	"github.com/specialistvlad/burstgridgo/internal/app"
+	"github.com/specialistvlad/burstgridgo/internal/cli"
+	"github.com/specialistvlad/burstgridgo/internal/hcl_adapter"
 )
 
 // main is the entrypoint for the burstgridgo application.
