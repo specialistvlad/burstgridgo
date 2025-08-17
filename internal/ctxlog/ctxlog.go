@@ -24,7 +24,5 @@ func FromContext(ctx context.Context) *slog.Logger {
 	if logger, ok := ctx.Value(loggerKey).(*slog.Logger); ok {
 		return logger
 	}
-	// Fallback to the default logger, though in our application flow,
-	// the logger should always be present.
-	return slog.Default()
+	panic("ctxlog: logger missing from context")
 }

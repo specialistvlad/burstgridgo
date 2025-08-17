@@ -6,10 +6,11 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/specialistvlad/burstgridgo/internal/app"
 	"github.com/specialistvlad/burstgridgo/internal/cli"
-	"github.com/specialistvlad/burstgridgo/internal/hcl_adapter"
 )
 
 // main is the entrypoint for the burstgridgo application.
@@ -32,25 +33,38 @@ func main() {
 	}
 }
 
-// run encapsulates the main application logic.
+// run encapsulates the main application logic with robust panic recovery.
 func run(outW io.Writer, args []string) (err error) {
-	appConfig, shouldExit, err := cli.Parse(args, outW)
-	if err != nil {
-		return err
+	// Defer the panic handler. It will execute when the function exits,
+	// either normally or during a panic. If a panic occurred, it recovers
+	// and sets the named return variable 'err'.
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("application startup panicked | %v", r)
+		}
+	}()
+
+	// Use a different variable for the parsing error to avoid shadowing 'err'.
+	appConfig, shouldExit, parseErr := cli.Parse(args, outW)
+	if parseErr != nil {
+		return parseErr
 	}
+
 	if shouldExit {
 		return nil
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("application startup panicked: %v", r)
-		}
-	}()
+	// Create a context that is canceled on receiving an OS interrupt signal.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop() // Ensures the signal listener is cleaned up.
 
-	// Instantiate the concrete HCL loader to pass to the app.
-	loader := hcl_adapter.NewLoader()
-	burstgridApp := app.NewApp(outW, appConfig, loader)
+	// Step 1: Create the application with the signal-aware context.
+	// If this call panics, execution jumps to the deferred function above.
+	app := app.NewApp(ctx, outW, appConfig, nil)
 
-	return burstgridApp.Run(context.Background(), appConfig)
+	// Step 2: Run the application.
+	// The error returned here will be the function's return value.
+	err = app.Run()
+
+	return err
 }

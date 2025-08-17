@@ -23,7 +23,7 @@ func (e *ExitError) Error() string {
 
 // Parse processes command-line arguments. It returns a populated AppConfig,
 // a boolean indicating if the program should exit cleanly, or an ExitError.
-func Parse(args []string, output io.Writer) (*app.AppConfig, bool, error) {
+func Parse(args []string, output io.Writer) (*app.Config, bool, error) {
 	slog.Debug("CLI parser started.")
 	flagSet := flag.NewFlagSet("burstgridgo", flag.ContinueOnError)
 	flagSet.SetOutput(output)
@@ -91,13 +91,17 @@ Options:
 	}
 	slog.Debug("CLI parameter validation complete.")
 
-	config := &app.AppConfig{
+	config, err := app.NewConfig(app.Config{
 		GridPath:        path,
 		ModulesPath:     *modulesPathFlag,
 		HealthcheckPort: *healthPortFlag,
 		LogFormat:       logFormat,
 		LogLevel:        logLevel,
 		WorkerCount:     *workersFlag,
+	})
+
+	if err != nil {
+		return nil, false, &ExitError{Code: 2, Message: err.Error()}
 	}
 
 	slog.Debug("CLI parser finished successfully.", "config", config)

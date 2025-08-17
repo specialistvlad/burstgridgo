@@ -2,49 +2,24 @@ package builder
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/specialistvlad/burstgridgo/internal/config"
 	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
-	"github.com/specialistvlad/burstgridgo/internal/dag"
+	"github.com/specialistvlad/burstgridgo/internal/graph"
 	"github.com/specialistvlad/burstgridgo/internal/node"
-	"github.com/specialistvlad/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/task"
 )
 
-// BuildStatic constructs a complete, validated dependency graph from a config model.
-func BuildStatic(ctx context.Context, model *config.Model, r *registry.Registry) (*Storage, error) {
+// DefaultBuilder implements the logic for preparing a single node for execution.
+type DefaultBuilder struct{}
+
+// New creates a new default builder.
+func New() Builder {
+	return &DefaultBuilder{}
+}
+
+// Build implements the Builder interface.
+func (b *DefaultBuilder) Build(ctx context.Context, n *node.Node, g graph.Graph) (*task.Task, error) {
 	logger := ctxlog.FromContext(ctx)
-	logger.Debug("Build: Starting graph construction.")
-	graph := &Storage{
-		Nodes: make(map[string]*node.Node),
-		dag:   dag.New(),
-	}
-
-	// First pass: create all Nodes for steps and resources.
-	graph.createNodes(ctx, model.Grid)
-	logger.Debug("Build: Node creation complete.", "Node_count", len(graph.Nodes))
-
-	// Second pass: link dependencies.
-	if err := graph.linkNodes(ctx, model, r); err != nil {
-		return nil, err
-	}
-	logger.Debug("Build: Node linking complete.")
-
-	// Third pass: initialize counters.
-	logger.Debug("Build: Initializing Node counters from graph topology.")
-	for _, Node := range graph.Nodes {
-		if err := graph.SetInitialCounters(ctx, Node); err != nil {
-			return nil, fmt.Errorf("failed to initialize counters for Node %s: %w", Node.ID(), err)
-		}
-	}
-	logger.Debug("Build: Counter initialization complete.")
-
-	// Final validation: Cycle detection.
-	if err := graph.dag.DetectCycles(); err != nil {
-		return nil, fmt.Errorf("error validating dependency graph: %w", err)
-	}
-	logger.Debug("Build: Cycle detection passed.")
-
-	logger.Info("Build: Graph construction successful.")
-	return graph, nil
+	logger.Debug("builder.Build called (placeholder)", "node", n.ID.String())
+	return &task.Task{Node: n, ResolvedInputs: make(map[string]any)}, nil
 }

@@ -77,15 +77,14 @@ lint: ## Run optional golangci-lint
 
 test: ## Run unit tests
 	@echo "Running tests..."
-	BGGO_TEST_LOGS=false go test -v -race -timeout 5s ./...
+	go test -v -race -timeout 5s -coverprofile=coverage.out -coverpkg=./... ./...
+	go tool cover -func=coverage.out
 
 test-debug: ## Run unit tests with logs enabled in debug mode BGGO_TEST_LOGS=true
 	@echo "Running tests..."
 	BGGO_TEST_LOGS=true go test -v -race -timeout 5s ./...
 
-coverage: ## Generate and view a test coverage report
-	@echo "Running tests and generating coverage report..."
-	go test -v -race -coverprofile=coverage.out -coverpkg=./... ./...
+coverage: ## Display a test coverage report
 	@echo "Opening coverage report in browser..."
 	go tool cover -html=coverage.out
 
