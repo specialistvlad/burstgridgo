@@ -1,4 +1,7 @@
 # File: examples/http_request.hcl
+# This example demonstrates basic sequential and parallel HTTP requests
+# using a shared `http_client` resource for connection reuse.
+# To run this example use a command like: `make run ./examples/http_request.hcl`
 
 # 1. Define a stateful, shared resource.
 # This creates a single, persistent HTTP client that can be reused.

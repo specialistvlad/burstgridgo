@@ -47,7 +47,7 @@ Options:
 
 	gridFlag := flagSet.String("grid", "", "Path to the grid file or directory.")
 	gFlag := flagSet.String("g", "", "Path to the grid file or directory (shorthand).")
-	healthPortFlag := flagSet.Int("healthcheck-port", 0, "Port for the HTTP health check server. 0 to disabled.")
+	healthPortFlag := flagSet.Int("healthcheck-port", 0, "Port for the HTTP health check server. 0 is disabled.")
 	logFormatFlag := flagSet.String("log-format", "json", "Log output format. Options: 'text' or 'json'.")
 	logLevelFlag := flagSet.String("log-level", "info", "Set the logging level. Options: 'debug', 'info', 'warn', 'error'.")
 	workersFlag := flagSet.Int("workers", 10, "Number of concurrent workers for the executor.")

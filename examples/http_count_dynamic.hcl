@@ -1,5 +1,10 @@
+# File: examples/http_count_dynamic.hcl
+# This example demonstrates a dynamic fan-out pattern without a fan-in.
+# The number of parallel requests is set by the REQUEST_COUNT env var.
+# Note: This example does not have a "fan-in" step to collect results.
+# To run this example use a command like: `REQUEST_COUNT=5 make run ./examples/http_count_dynamic.hcl`
+
 # 1. Define a stateful, shared resource.
-# This remains unchanged.
 resource "http_client" "shared" {
   arguments {
     timeout = "45s"
@@ -10,7 +15,7 @@ resource "http_client" "shared" {
 # This allows the count to be configured at runtime via `export REQUEST_COUNT=...`
 step "env_vars" "config" {
   arguments {
-    # Default to 10 to ensure index [3] is always valid for the demo.
+    # Default to 10 if not set
     defaults = {
       "REQUEST_COUNT" = "10"
     }

@@ -1,3 +1,9 @@
+# File: examples/http_count_static_fan_in.hcl
+# This example demonstrates a static fan-out/fan-in pattern.
+# It runs a static count (10) of HTTP requests in parallel and then
+# uses the splat operator [*] to collect all results into a final step.
+# To run this example use a command like: `make run ./examples/http_count_static_fan_in.hcl`
+
 # 1. Define a stateful, shared resource.
 resource "http_client" "shared" {
   arguments {

@@ -1,5 +1,9 @@
+# File: examples/http_count_dynamic_fan_in.hcl
+# This example demonstrates a dynamic fan-out/fan-in pattern.
+# The number of parallel requests is set by the REQUEST_COUNT env var.
+# To run this example use a command like: `REQUEST_COUNT=5 make run ./examples/http_count_dynamic_fan_in.hcl`
+
 # 1. Define a stateful, shared resource.
-# This remains unchanged.
 resource "http_client" "shared" {
   arguments {
     timeout = "45s"
@@ -10,7 +14,7 @@ resource "http_client" "shared" {
 # This allows the count to be configured at runtime via `export REQUEST_COUNT=...`
 step "env_vars" "config" {
   arguments {
-    # Default to 10 to ensure index [3] is always valid for the demo.
+    # Default to 2 if not set.
     defaults = {
       "REQUEST_COUNT" = "2"
     }
@@ -45,10 +49,10 @@ step "http_request" "delay_requests" {
 
 # 5. This "fan-in" step collects and prints the output from ALL instances.
 # It demonstrates the splat operator working on the dynamic group.
-# step "print" "show_all_results" {
-#   arguments {
-#     # This implicitly depends on the entire "delay_requests" group finishing.
-#     # The splat operator collects the 'output' from every instance into a list.
-#     input = step.http_request.delay_requests[*].output
-#   }
-# }
+step "print" "show_all_results" {
+  arguments {
+    # This implicitly depends on the entire "delay_requests" group finishing.
+    # The splat operator collects the 'output' from every instance into a list.
+    input = step.http_request.delay_requests[*].output
+  }
+}

@@ -17,8 +17,8 @@ type App struct {
 	outW       io.Writer
 	config     *Config
 	grid       *model.Grid
-	httpServer *http.Server
 	registry   *registry.Registry
+	httpServer *http.Server
 }
 
 // NewApp is the constructor for the main application. It returns a fully

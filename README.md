@@ -27,15 +27,14 @@
 >
 > This project is under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. It is not recommended for production use at this stage.
 
-`burstgridgo` is a Go-native, declarative load testing tool designed for simulating real-world, protocol-aware workflows using HCL.
+Experimental tool designed for simulating real-world workflows using HCL.
+
+What does it mean?
 
 ## Core Features
 * **Declarative Workflows**: Define complex, multi-protocol test scenarios (grids) in simple, composable HCL files.
 * **Unified Configuration**: All `.hcl` files are loaded recursively and treated as a single collection. No explicit imports are needed between your local files.
-* **Intelligent Concurrency**: Automatically builds a dependency graph (DAG) from your workflows, running independent tasks in parallel while correctly resolving dependencies.
-* **Extensible by Design**: Easily add new capabilities. The tool is built on a simple Go `Module` interface, making it straightforward to contribute your own runners and assets.
-* **Minimal Setup**: Get started quickly with just Docker. For a full local development environment, `make` and the `go` toolkit are also supported.
-
+* **Concurrency in mind**: Automatically builds a dependency graph (DAG) from your workflows, running independent tasks in parallel while correctly resolving dependencies.
 
 
 ### Example Grid
@@ -43,31 +42,38 @@ The following grid defines a workflow with multiple dependent HTTP requests.
 ```hcl
 # File: examples/http_concurrent_requests.hcl
 
+# 1. This step runs first.
 step "http_request" "httpbin" {
-  count = 10
+  count = 5  # Run this "http_request" step 5 times.
 
   concurrency {
-    limit = 3
+    limit = 3 # ...but only run 3 of those 5 requests at any given time.
   }
 
-  retry {
-    attempts = 2
-    delay    = 2s
+  retry { # Retry failed requests.
+    attempts = 2 # Number of attempts per request
+    delay    = 2s # Delay between each attempt
   }
 
   arguments {
-    url = "https://httpbin.org/get?$request={index}"
+    url = "https://httpbin.org/get?$request={index}" # 'index' is passed as a variable to each execution; values will be (0-4).
   }
 }
 
+# 2. This step depends on *each* individual run of the first step.
+# Note: no need to define count = 5 in this section. Unlike Terraform steps are created dynamically for each instance of step in previous line of chain.
 step "print" "wait_each" {
   arguments {
     input = "Request=${index} code=${http_request.httpbin[each].output.status_code}"
   }
 }
 
+# 3. This step depends on *all* runs of the first step finishing.
 step "print" "wait_all" {
   arguments {
+    # The `[*]` (splat operator) tells burstgridgo: "Wait for all
+    # 'httpbin' requests to complete, then run this 'print' step *once*
+    # with the collected list of all results."
     input = "We made ${length(http_request.httpbin[*].output)} requests!"
   }
 }

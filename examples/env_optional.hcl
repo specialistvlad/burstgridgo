@@ -1,4 +1,6 @@
-
+# File: examples/env_optional.hcl
+# This example demonstrates how to use environment variables with default values.
+# To run this example use a command like: `make run ./examples/env_optional.hcl`
 # If LOG_LEVEL is not set, it will default to "info".
 step "env_vars" "optional" {
   arguments {

@@ -1,3 +1,9 @@
+# File: examples/http_count_static.hcl
+# This example demonstrates a static fan-out with a `count` block.
+# It runs 10 parallel requests and then has a final step that
+# explicitly depends on a subset of those requests.
+# To run this example use a command like: `make run ./examples/http_count_static.hcl`
+
 # 1. Define a stateful, shared resource.
 resource "http_client" "shared" {
   arguments {

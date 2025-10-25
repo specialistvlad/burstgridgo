@@ -1,6 +1,11 @@
+# File: examples/socketio_ping_pong.hcl
+# This example demonstrates a single Socket.IO ping-pong request.
+# It connects, emits a "ping" event, and waits for a "pong" event.
+# To run this example use a command like: `make run ./examples/socketio_ping_pong.hcl`
+# You may need to set SOCKETIO_WSS_URL or rely on the default.
 step "env_vars" "read_env_vars_ping_pong" {
   arguments {
-    required = ["SOCKETIO_WSS_URL"]
+    required = [] # No required vars, just use defaults
     defaults = {
       SOCKETIO_WSS_URL = "wss://example.com/socket.io"
     }

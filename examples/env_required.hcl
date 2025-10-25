@@ -1,4 +1,7 @@
-# This step will fail if DB_PASS is not set in the environment.
+# File: examples/env_required.hcl
+# This example demonstrates how to use required environment variables.
+# This step will fail if DB_PASS are not set.
+# To run this example use a command like: `DB_PASS=... make run ./examples/env_required.hcl`
 step "env_vars" "db" {
   arguments {
     prefix       = "DB_" // Use 'prefix' to specify WHICH variables to find.
@@ -6,9 +9,7 @@ step "env_vars" "db" {
     defaults = {
       "DB_HOST" = "localhost"
       "DB_USER" = "guest"
-      "DB_PASS" = "secret"
-    }
-    required = ["DB_HOST", "DB_USER", "DB_PASS"]
+    } required  = ["DB_HOST", "DB_USER", "DB_PASS"]
   }
 }
 
