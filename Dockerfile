@@ -7,7 +7,7 @@
 # =================================================================
 # Global Build Arguments
 # =================================================================
-ARG GO_VERSION=alpine3.22@sha256:daae04ebad0c21149979cd8e9db38f565ecefd8547cf4a591240dc1972cf1399
+ARG GO_VERSION=1.25.3-alpine3.22@sha256:aee43c3ccbf24fdffb7295693b6e33b21e01baec1b2a55acc351fde345e9ec34
 ARG TARGETPLATFORM=linux/amd64
 # Metadata ARGs are passed in from the CI/CD pipeline for a single source of truth
 ARG VERSION
