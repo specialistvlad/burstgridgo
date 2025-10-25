@@ -8,7 +8,7 @@ HEALTHCHECK_PORT := 28080
 # Set the default target to 'help'
 .DEFAULT_GOAL := help
 
-.PHONY: help build start dev test test-debug lint vet fmt coverage check docker-build-dev docker-dev docker-build-release
+.PHONY: help build run dev test test-debug lint vet fmt coverage check docker-build-dev docker-dev docker-build-release
 
 help: ## Show this help message.
 	@echo "Usage: make [target] [options]"
@@ -18,7 +18,7 @@ help: ## Show this help message.
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' | \
 		sed 's/|/\n                 /g'
 
-# Allows running 'make start file.hcl' instead of 'make start ARGS=file.hcl'
+# Allows running 'make run file.hcl' instead of 'make run ARGS=file.hcl'
 ARGS ?= $(filter-out $@,$(MAKECMDGOALS))
 
 build: ## Build the local application binary.
@@ -26,7 +26,7 @@ build: ## Build the local application binary.
 	@mkdir -p .tmp
 	go build -o .tmp/main ./cmd/cli
 
-start: build ## Run the application locally (builds first).
+run: build ## Run the application locally (builds first).
 	@echo "Starting application..."
 	./.tmp/main $(ARGS)
 
