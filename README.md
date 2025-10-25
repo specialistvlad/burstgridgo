@@ -40,41 +40,50 @@ What does it mean?
 ### Example Grid
 The following grid defines a workflow with multiple dependent HTTP requests.
 ```hcl
-# File: examples/http_concurrent_requests.hcl
+# File: examples/http_count_static_fan_in.hcl
+# This example demonstrates a static fan-out/fan-in pattern.
+# It runs a static count (10) of HTTP requests in parallel and then
+# uses the splat operator [*] to collect all results into a final step.
+# To run this example use a command like: `make run ./examples/http_count_static_fan_in.hcl`
 
-# 1. This step runs first.
-step "http_request" "httpbin" {
-  count = 5  # Run this "http_request" step 5 times.
-
-  concurrency {
-    limit = 3 # ...but only run 3 of those 5 requests at any given time.
-  }
-
-  retry { # Retry failed requests.
-    attempts = 2 # Number of attempts per request
-    delay    = 2s # Delay between each attempt
-  }
-
+# 1. Define a stateful, shared resource.
+resource "http_client" "shared" {
   arguments {
-    url = "https://httpbin.org/get?$request={index}" # 'index' is passed as a variable to each execution; values will be (0-4).
+    timeout = "45s"
   }
 }
 
-# 2. This step depends on *each* individual run of the first step.
-# Note: no need to define count = 5 in this section. Unlike Terraform steps are created dynamically for each instance of step in previous line of chain.
-step "print" "wait_each" {
+# 2. Define steps that consume the shared resource.
+step "http_request" "first" {
+  uses {
+    client = resource.http_client.shared
+  }
   arguments {
-    input = "Request=${index} code=${http_request.httpbin[each].output.status_code}"
+    url = "https://httpbin.org/get"
   }
 }
 
-# 3. This step depends on *all* runs of the first step finishing.
-step "print" "wait_all" {
+# 3. These two steps are now replaced by a single block.
+step "http_request" "delay_requests" {
+  count = 10
+
+  uses {
+    client = resource.http_client.shared
+  }
   arguments {
-    # The `[*]` (splat operator) tells burstgridgo: "Wait for all
-    # 'httpbin' requests to complete, then run this 'print' step *once*
-    # with the collected list of all results."
-    input = "We made ${length(http_request.httpbin[*].output)} requests!"
+    url = "https://httpbin.org/delay/${count.index + 1}"
+  }
+  depends_on = ["http_request.first"]
+}
+
+
+# 4. This "fan-in" step collects and prints the output from ALL instances.
+# It demonstrates the splat operator working on the dynamic group.
+step "print" "show_all_results" {
+  arguments {
+    # This implicitly depends on the entire "delay_requests" group finishing.
+    # The splat operator collects the 'output' from every instance into a list.
+    input = step.http_request.delay_requests[*].output
   }
 }
 ```
