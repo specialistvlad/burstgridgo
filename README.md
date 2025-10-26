@@ -26,12 +26,12 @@ It's designed to be the "glue" for complex automation, testing, and data orchest
 * Automating complex data pipelines or back-office processes.
 
 ## Core Features
-* Declarative HCL Workflows: Define all your resources and execution steps in simple, composable .hcl files.
-* Automatic Concurrency: Automatically builds a Dependency Graph (DAG) from your HCL to run independent tasks in parallel.
-* Stateful Resource Management: Define resource blocks (like an http_client) that are created once and shared by multiple steps.
-* Dynamic Fan-out/Fan-in: Natively supports parallel execution patterns using the count meta-argument and splat operator ([*]) for collecting results.
-* Type-Safe & Validated: Includes a core type system with support for primitives (string, number), collections (list, map), and objects.
-* Extensible Architecture: Easily add new capabilities (like http_request or print) through a pluggable "Runner" and "Asset" system.
+* **Declarative HCL Workflows:** Define all your resources and execution steps in simple, composable .hcl files.
+* **Automatic Concurrency:** Automatically builds a Dependency Graph (DAG) from your HCL to run independent tasks in parallel.
+* **Stateful Resource Management:** Define resource blocks (like an http_client) that are created once and shared by multiple steps.
+* **Dynamic Fan-out/Fan-in:** Natively supports parallel execution patterns using the count meta-argument and splat operator ([*]) for collecting results.
+* **Type-Safe & Validated:** Includes a core type system with support for primitives (string, number), collections (list, map), and objects.
+* **Extensible Architecture:** Easily add new capabilities (like http_request or print) through a pluggable "Runner" and "Asset" system.
 
 ## Community & Vision
 Beyond being a useful tool, this project has two other core goals:
