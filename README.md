@@ -9,67 +9,55 @@
 
 <br>
 
-> **Project Status: ⚠️Proof of Concept ⚠️**
+# DISCLAIMER
+**Project Status: ⚠️ MVP Stage 1 ⚠️**
 >
-> This project is under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. It is not recommended for production use at this stage.
+> Thanks for checking out BurstGridGo!
+> I’m currently the sole maintainer of this project, but I welcome > any form of contribution — from questions to code.
+> This project is a great entry point if you’re new to open source.
+> This project is under active development. The API and internal architecture are **not yet stable** and are subject to breaking changes. It is not recommended for any real use at this stage.
 
 ## What is `burstgridgo`?
 
-`burstgridgo` is a powerful, declarative workflow engine that lets you define complex, multi-step processes as code.
+BurstGridGo is an open-source experiment on its way to becoming a **production-grade automation and orchestration engine** — a declarative system built in Go for developers who care about clarity, scalability, and modern engineering principles.  
+It blends **declarative design**, **visual control**, and **AI-native automation** to help engineers define and orchestrate complex workflows with precision and insight.  
+The project’s long-term mission is to turn today’s experimentation into tomorrow’s reliable platform.
 
-It uses a simple, [HCL-based syntax](https://github.com/hashicorp/hcl) (like [Terraform](https://developer.hashicorp.com/terraform)) to define *what* you want to run—such as HTTP requests, gRPC calls, or database queries. `burstgridgo` automatically builds a dynamic dependency graph (DAG) from your definitions to execute everything with maximum concurrency.
+## ⚙️ Refined Strategic Pillars
 
-It's designed to be the "glue" for complex automation, testing, and data orchestration tasks, such as:
+1. **Declarative Core**  
+   Define *what* to run, not *how*. The engine builds and executes the DAG automatically from clear, type-safe HCL.
 
-* Simulating real-world user traffic in a load test.
-* Orchestrating end-to-end tests for a microservices architecture.
-* Automating complex data pipelines or back-office processes.
+2. **Modular Ecosystem**  
+   A free, open marketplace for reusable modules — from HTTP and gRPC to AI/LLM runners — designed for easy discovery and contribution.
 
-## Core Features
-* **Declarative HCL Workflows:** Define all your resources and execution steps in simple, composable .hcl files.
-* **Automatic Concurrency:** Automatically builds a Dependency Graph (DAG) from your HCL to run independent tasks in parallel.
-* **Stateful Resource Management:** Define resource blocks (like an http_client) that are created once and shared by multiple steps.
-* **Dynamic Fan-out/Fan-in:** Natively supports parallel execution patterns using the count meta-argument and splat operator ([*]) for collecting results.
-* **Type-Safe & Validated:** Includes a core type system with support for primitives (string, number), collections (list, map), and objects.
-* **Extensible Architecture:** Easily add new capabilities (like http_request or print) through a pluggable "Runner" and "Asset" system.
+3. **Human-Grade Experience**  
+   Power users get a rich **TUI**; everyone else gets a **Figma-quality Web UI** with drag-and-drop workflow design, live logs, and visual scaling.
 
-## Community & Vision
-Beyond being a useful tool, this project has two other core goals:
+4. **Scalable Architecture**  
+   Built to handle both local runs and distributed workloads, scaling seamlessly across cores or clusters for load testing or orchestration.
 
-* To Build a Powerful, Open-Source Automation Hub: The long-term vision is to create a flexible, open-source alternative to platforms like Zapier or n8n, with a strong focus on developer-centric tooling (like HCL) and future-looking integrations (like AI/LLM orchestration).
-* To Be a Welcoming Place to Collaborate: This project is intentionally built as a place for engineers to learn, experiment, and gain experience in open source. We are actively looking for collaborators who are passionate about Go, graph-based systems, or just building cool developer tools. If you've been wanting to contribute to an open-source project but didn't know where to start, you are welcome here.
+5. **AI-Native Automation**  
+   BurstGridGo will bridge traditional automation with intelligent systems — integrating directly with modern AI protocols (MCP, OpenAI, Anthropic, etc.) and providing declarative control over AI tools and agents.
 
-## 🚀 Getting Started
+6. **Observability & Insight**  
+   First-class analytics, logging, and reporting.  
+   - Native support for **OpenTelemetry**, **Prometheus**, **Grafana**, and **Elastic Stack** for metrics and traces.  
+   - Pluggable exporters so users can stream data to tools like **Datadog**, **New Relic**, or **OpenSearch**.  
+   - Built-in reports and visual insights accessible from both the TUI and Web UI.
 
-This guide will walk you through cloning the repository and running your first workflow from the included examples.
+7. **Embeddable SDK**  
+   Use BurstGridGo as a library within Go projects to orchestrate internal tasks or integrate directly into CI/CD and infrastructure workflows.
 
-### Prerequisites
+## 🚀 Getting Involved
 
-* [Go](https://go.dev/doc/install) (version 1.25 or later)
-* [Make](https://www.gnu.org/software/make/)
-* [Docker](https://docker.io) To build images
+Right now, BurstGridGo is focused on **contributors**.  
+If you want to explore, learn, or help me shape the engine as it evolves — start here:
 
-### 1. Clone the Repository
+👉 **Read the [Contributing Guide](CONTRIBUTING.md)** to understand how the project is structured, how to run it locally, and where your input can make the biggest difference.
 
-First, clone the project to your local machine using `git`:
-
-```sh
-git clone https://github.com/specialistvlad/burstgridgo.git
-cd burstgridgo
-```
-
-### 2. Run an Example
-
-You can run one of the provided examples (located in the /examples folder) using the make run command.
-
-For instance, to run an example from the [examples folder](examples/):
-```sh
-make run ./examples/http_count_static_fan_in.hcl
-```
-
-## Learn More & Contribute
-* Roadmap: See our Project Roadmap [Project Roadmap](https://github.com/users/specialistvlad/projects/1/views/2) to learn about planned features and internal design.
-* Contributing Guide: Find out how you can help make this project better by reading our [Contributing Guide](CONTRIBUTING.md).
+This stage is about **building the foundation** — architecture, testing, documentation, and modules.  
+Every contribution helps move BurstGridGo closer to becoming the platform I envision.
 
 ## License
 burstgridgo is licensed under the MIT License.

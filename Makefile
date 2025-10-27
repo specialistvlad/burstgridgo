@@ -8,7 +8,7 @@ HEALTHCHECK_PORT := 28080
 # Set the default target to 'help'
 .DEFAULT_GOAL := help
 
-.PHONY: help build run dev test test-debug lint vet fmt coverage check docker-build-dev docker-dev docker-build-release
+.PHONY: help build run start dev dev-watch test test-watch test-debug lint vet fmt coverage check docker-build-dev docker-dev docker-build-release
 
 help: ## Show this help message.
 	@echo "Usage: make [target] [options]"
@@ -26,11 +26,14 @@ build: ## Build the local application binary.
 	@mkdir -p .tmp
 	go build -o .tmp/main ./cmd/cli
 
+start: run  ## Alias for run
 run: build ## Run the application locally (builds first).
 	@echo "Starting application..."
 	./.tmp/main $(ARGS)
 
-dev: ## Run in dev mode with live-reloading (via air).
+dev: dev-watch  ## Alias for dev-watch
+
+dev-watch: ## Run in dev mode with live-reloading (via air).
 	@echo "Starting dev server with live-reloading (via 'go run github.com/air-verse/air')..."
 	go run github.com/air-verse/air $(ARGS)
 
@@ -51,12 +54,16 @@ test: ## Run unit tests with race detection and coverage.
 	go test -v -race -timeout 5s -coverprofile=coverage.out -coverpkg=./... ./...
 	go tool cover -func=coverage.out
 
+test-watch: ## Re-run tests on file changes (via air).
+	@echo "Watching tests with air..."
+	go run github.com/air-verse/air -c air.test.toml
+
 test-debug: ## Run unit tests with verbose debug logging.
 	@echo "Running tests..."
 	BGGO_TEST_LOGS=true go test -v -race -timeout 5s ./...
 
 coverage: ## Open the test coverage report in your browser.
-	@echo "Opening coverage report in browser..."
+	@test -f coverage.out || (echo "Run \`make test\` first"; exit 1)
 	go tool cover -html=coverage.out
 
 check: fmt vet test ## Run all local checks (fmt, vet, test).

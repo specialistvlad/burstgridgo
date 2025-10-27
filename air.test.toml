@@ -1,0 +1,14 @@
+root = "."
+tmp_dir = ".tmp"
+
+[build]
+# Pick ONE:
+# cmd = "make test"
+cmd = "make test-debug"
+
+# No-op run phase (don’t try to run a binary from the repo)
+full_bin = "/usr/bin/true"
+
+include_ext = ["go", "hcl"]
+exclude_dir = [".tmp", "vendor", "docs"]
+log = "build-errors.log"

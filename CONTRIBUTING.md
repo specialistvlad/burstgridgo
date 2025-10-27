@@ -1,53 +1,89 @@
-# Contributing to burstgridgo
-First off, thank you for considering contributing! This project is driven by the community, and we welcome any contributions, from bug reports to new features.
+# Contributing to BurstGridGo
+
+Thanks for checking out **BurstGridGo**!  
+I’m currently the **sole maintainer** of this project, but I welcome any form of contribution — from ideas to code.  
+This project is a great entry point if you’re new to open source. The barrier to entry is low, but good engineering skills are important.  
+
+If you’re just getting started and want to learn, I’m happy to help you refine your skills. Just reach out and express your interest.
+
+---
 
 ## How to Contribute
-* **Reporting Bugs**: If you find a bug, please open an issue and provide as much detail as possible, including the version you're using and steps to reproduce it.
-* **Suggesting Features**: We'd love to hear your ideas! The best place for a new feature idea is in GitHub Discussions, where we can brainstorm and refine it.
-* **Answering Questions**: You can help other users by participating in discussions and answering questions.
+
+I’m open to all kinds of contributions — discussions, documentation, bug reports, or code. Here’s how you can get involved:
+
+### 💬 Start a Discussion
+The easiest way to contribute is to start a conversation.  
+You can email me at **specialistvlad@gmail.com**, but I prefer keeping discussions public on [GitHub Discussions](https://github.com/specialistvlad/burstgridgo/discussions) so others can join in.
+
+### ❓ Ask or Answer Questions
+If you have questions, ask them in Discussions.  
+If you see someone else asking for help — jump in and share your thoughts.
+
+### 🐞 Report Bugs
+If you find a bug, open an issue with as much detail as possible:
+- The version you’re using  
+- Steps to reproduce the problem  
+- Expected vs. actual behavior
+
+### 🌱 Suggest or Build Features
+I’d love help implementing new features.  
+Check out my [project board](https://github.com/users/specialistvlad/projects/1/views/2) to see ongoing ideas, or open a discussion to brainstorm your own.  
+You can also create new tasks directly on the board if you have suggestions.
+
+### 🧩 Help Manage the Repository
+I’d appreciate help with maintenance tasks — cleaning up tags, managing issues, or organizing tasks.  
+If you want to take part in improving the structure or workflows, that’s extremely valuable.
+
+### 📚 Write Documentation
+Documentation is currently minimal — which makes it a perfect opportunity to help.  
+You can start from scratch or help expand existing sections.
+
+---
 
 ## Development Workflow
-**Prerequisites**: You will need **Go**, **Docker**, and **Make** installed.
 
-**Setup**: Fork the repository and clone it to your local machine.
+### 🔧 Prerequisites
+You’ll need **Go**, **Make**, and optionally **Docker**.
 
-**Development Loop**: The easiest way to work on the project is with the live-reloading development environment. This will automatically recompile and restart the application when you change a file.
+### 🚀 Setup
+Fork the repository, then clone it locally:
 ```sh
-# Run the dev container, specifying a grid to execute
-make dev grid=examples/dev.hcl
+git clone https://github.com/specialistvlad/burstgridgo.git
+cd burstgridgo
 ```
 
-**Running Tests**: Before submitting a contribution, please ensure all tests and linters pass. This is crucial as our CI pipeline and production Docker build will execute this same test suite.
-
-To run the test suite:
+### 🧠 Getting Started
+The **Makefile** is the main entry point for development tasks.  
+Run the following to see available commands:  
 ```sh
-make test
+make
 ```
 
-To run the linter:
+### ⚙️ Live Development
+You can run the app in live-reload mode while editing:  
 ```sh
-go vet ./...
+make dev-watch ./examples/http_count_static_fan_in.hcl
 ```
 
-## Pull Request Process
-1.  Create a new branch for your feature or bugfix.
-2.  Make your changes and commit them with a clear, descriptive message.
-3.  Ensure you have added or updated tests for your changes.
-4.  Push your branch to your fork and open a Pull Request against the `main` branch.
-5.  Link the PR to any relevant issues.
-
-## Documenting Your Code
-We auto-generate documentation for runners from the source code. If you are adding or changing a runner, please document your code.
-
-1.  Add standard Go doc comments to your runner's configuration struct and its fields.
-2.  Add or update the `example.hcl` file in the runner's directory.
-
-After making your changes, regenerate the documentation by running:
+### 🧪 Running Tests
+Run tests continuously while developing:  
 ```sh
-# NOTE: This tool is on the project roadmap and does not exist yet.
-# When implemented, the command might look something like this:
-go run ./cmd/doc-gen --input ./modules --output ./docs/runners
+make test-watch
 ```
 
-## Code of Conduct
-This project adheres to a Code of Conduct. By participating, you are expected to uphold this code.
+Before committing, make sure all tests and checks pass:  
+```sh
+make check
+```
+
+For more commands:  
+```sh
+make help
+```
+
+---
+
+## 🧭 Code of Conduct
+By contributing, you agree to follow the project’s [Code of Conduct](CODE_OF_CONDUCT.md).  
+I expect everyone to maintain a respectful and supportive environment.
