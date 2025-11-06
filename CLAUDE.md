@@ -158,3 +158,164 @@ Example HCL files in `examples/` demonstrate:
 - `socketio_ping_pong.hcl` - WebSocket example
 
 Use these as references when implementing new features or testing changes.
+
+---
+
+## Architecture Decision Records (ADRs)
+
+This project uses Architecture Decision Records to document significant architectural and design decisions. ADRs are located in `docs/ADR/`.
+
+### ADR Structure
+Each ADR follows a consistent format:
+- **Header:** Number, Title, Status (Draft/Accepted/Implemented), Author, Date
+- **Context:** Problem statement and why the decision is needed
+- **Decision Drivers:** (Optional) Factors influencing the decision
+- **Decision/Decision Outcome:** What is being decided with specific implementation details
+- **Consequences:** Positive and negative impacts
+- **Implementation Plan:** (Optional) Step-by-step implementation approach
+- **Validation and Testing:** (Optional) How to verify the implementation
+
+### Key ADRs to Reference
+- **ADR-001:** State Management - Resource lifecycle and dependency injection via `uses` block
+- **ADR-002:** Internal Refactoring - Pattern for decomposing large files into focused units
+- **ADR-013:** DAG Topology Extraction - Separation of concerns between business logic and graph operations
+- **ADR-014:** Structured Node Identifiers - Node addressing system architecture
+- **ADR-xxx-executor-refactoring:** Splitting executor into generic DAG engine and HCL-specific runner
+- **ADR-xxx-fan-in:** Draft for dynamic `count` and `for_each` aggregation
+
+### When to Create an ADR
+Create an ADR when:
+1. Making significant architectural decisions (new packages, major refactoring)
+2. Introducing new concepts or patterns (e.g., stateful resources, type systems)
+3. Changing public APIs or contracts
+4. Decisions that affect multiple packages or have long-term consequences
+
+### What Does NOT Need an ADR
+**ADRs are for architecture, not routine development.** The following do NOT require an ADR:
+- ❌ Adding new modules (e.g., `modules/redis`, `modules/postgres`)
+- ❌ Bug fixes and error handling improvements
+- ❌ Documentation updates
+- ❌ Adding tests or test utilities
+- ❌ Small feature additions to existing components
+- ❌ Performance optimizations that don't change architecture
+- ❌ Code formatting and linting fixes
+- ❌ Adding new fields to existing structs (unless changing contracts)
+
+**Rule of thumb:** If it's implementing an existing pattern or fixing/enhancing something without introducing new concepts, you don't need an ADR. Just write good code and tests.
+
+### ADR Naming Convention
+- **Implemented:** `ADR-NNN-descriptive-name.md` (numbered sequentially)
+- **Draft/In Progress:** `ADR-xxx-descriptive-name.md` (use `xxx` prefix)
+- Update status header as: Draft → Accepted → Implemented
+
+### ADR Writing Principles
+- Focus on **why** not just **what** - explain the reasoning and trade-offs
+- Document both positive and negative consequences
+- Reference specific package and file names
+- Include implementation verification strategy (tests, validation)
+- Link to related ADRs when there are dependencies
+- Add implementation notes when status changes to "Implemented"
+
+---
+
+## Current Project State & Next Steps
+
+### ✅ What's Working
+- **HCL Parsing Pipeline:** Successfully parses `.hcl` files into strongly-typed Go models (`internal/model`)
+- **Model Layer:** Grid, Runner, Step structures complete and well-documented
+- **CLI & App Infrastructure:** Argument parsing, logging, configuration functional
+- **Module System Foundation:** Handler registration works (`modules/print` implemented)
+- **Integration Tests:** 9 of 11 integration test suites passing (2 have skipped tests)
+
+### 🚧 Critical Gap: Execution Pipeline Not Implemented
+The entire execution layer is currently stubbed out with placeholder implementations:
+
+**Location:** `internal/app/app.go:57-77` - execution code is commented out
+
+**Affected Components:**
+1. **Scheduler** (`internal/scheduler/scheduler.go`)
+   - Returns empty channel, no logic to determine ready nodes
+   - Needs: Analyze graph state, find nodes with satisfied dependencies, emit via channel
+
+2. **Builder** (`internal/builder/builder.go`)
+   - Returns empty task with no input resolution
+   - Needs: Resolve HCL expressions, evaluate `uses` and `arguments`, produce fully-resolved Task
+
+3. **Executor** (`internal/localexecutor/executor.go`)
+   - Just logs "placeholder", doesn't execute anything
+   - Needs: Pull tasks from scheduler, dispatch to handlers, manage goroutine pool, update node state
+
+4. **Graph Construction**
+   - Model → Graph transformation not fully implemented
+   - Needs: Create nodes from Steps/Resources, build topology from `depends_on`
+
+### Strategic Next Steps - Three Paths
+
+#### **Option A: Complete Execution Core** 🎯 **(HIGHEST PRIORITY)**
+**Goal:** Make the engine actually run workflows end-to-end
+
+**Why First:**
+- Without execution, modules and features can't be properly tested
+- Validates the beautifully designed 5-phase architecture
+- Enables contributors to build modules with confidence
+- Moves from "parses config" to "executes workflows" - true MVP completion
+
+**Implementation Phases:**
+1. Graph Builder - Transform `model.Grid` to executable DAG
+2. Scheduler - Analyze dependencies, emit ready nodes
+3. Builder - Resolve expressions, produce runnable tasks
+4. Executor - Dispatch tasks to handlers, manage concurrency
+5. Integration - Uncomment execution code in `app.go`, create end-to-end tests
+
+**Quick Win Approach:**
+- Start minimal (sequential execution, hardcoded values)
+- Get one example running end-to-end
+- Iterate: add concurrency → expression eval → error handling
+
+#### **Option B: Expand Module Ecosystem** 🧩
+**Goal:** Build out modular runner marketplace
+
+**Focus:** HTTP enhancements (#54, #55), filesystem utils (#52), databases (Redis #60, Postgres #61, Mongo #62), messaging (RabbitMQ #63, Kafka #64)
+
+**Challenge:** Cannot be fully tested without Option A execution core
+
+#### **Option C: Feature Completeness** ✨
+**Goal:** Implement missing HCL language features
+
+**Tasks:** Variables support (#50), CLI flags (#51), splat operator (#49), complete skipped integration tests
+
+**Impact:** Increases HCL expressiveness but doesn't enable actual workflow execution
+
+### TODOs in Codebase
+Key TODOs found in source (via grep):
+- `internal/model/placement.go:13` - Update documentation
+- `internal/testutil/harness.go:115` - Fix harness issue (low priority)
+- Multiple skipped integration tests in `internal/integrationtests/hcl_*_test.go`
+- `internal/model/error_handling.go:13` - Describe error handling
+- `internal/model/observability.go:13` - Describe observability details
+
+### GitHub Issues Context
+67+ open issues, primarily module requests (issues #48-67). These represent the future module marketplace but require execution core to be useful.
+
+---
+
+## Working with This Codebase
+
+### Before Starting New Work
+1. **Check ADRs:** Review `docs/ADR/` for architectural decisions related to your work
+2. **Run Tests:** Ensure `make test` passes before making changes
+3. **Review Integration Tests:** Check `internal/integrationtests/` for examples of how features should work
+4. **Check TODOs:** Search for related TODOs or FIXMEs in the area you're modifying
+
+### Making Architectural Changes
+1. **Document First:** Create a draft ADR (`ADR-xxx-name.md`) before major changes
+2. **Discuss Trade-offs:** Explicitly document positive and negative consequences
+3. **Reference Patterns:** Look at ADR-002 for refactoring patterns, ADR-013 for separation concerns
+4. **Test Strategy:** Define how the change will be verified before implementing
+
+### Code Quality Standards
+- **Separation of Concerns:** Each package should have a single, clear responsibility (see ADR-002, ADR-013)
+- **Interface-Driven:** Use interfaces for dependency injection and testability
+- **Context-Aware:** Always pass `context.Context` and use `ctxlog.FromContext(ctx)` for logging
+- **Test Coverage:** Aim for high coverage, especially for core DAG/graph logic
+- **Documentation:** Use package-level `doc.go` files to explain purpose and responsibilities
