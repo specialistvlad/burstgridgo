@@ -98,10 +98,70 @@ The `internal/ctxlog` package provides context-aware structured logging using `s
 
 ## Testing Strategy
 
-- **Unit Tests:** Most packages have `_test.go` files colocated with implementation
-- **Integration Tests:** `internal/integrationtests/` contains end-to-end tests that parse and execute full HCL files
-- **Test Utilities:** `internal/testutil/` provides harnesses for parsing and testing runners/steps
-- **Coverage:** Project maintains test coverage tracking via codecov
+### Testing Philosophy: Integration Tests First
+
+**This project prioritizes integration tests over unit tests.** The rationale:
+
+1. **Resilience to Refactoring:** Internal implementation details change frequently. Integration tests remain valid even when internal packages are restructured or refactored.
+2. **Reduced Maintenance Burden:** When code changes, you don't need to rewrite dozens of unit tests. Integration tests focus on behavior, not implementation.
+3. **End-to-End Coverage:** Integration tests verify the entire solution works together, catching issues that unit tests might miss.
+4. **Confidence in Refactoring:** With solid integration tests, you can aggressively refactor internals (like ADR-002, ADR-013) without fear of breaking behavior.
+
+### Test Hierarchy
+
+**Priority 1: Integration Tests** (`internal/integrationtests/`)
+- End-to-end tests that parse real HCL files and verify complete workflows
+- Test actual user-facing behavior and contracts
+- Currently **67.5% coverage** - the highest in the project
+- Examples: `hcl_runner_basic_test.go`, `hcl_step_deps_test.go`, `app_loader_test.go`
+- **Always write integration tests first** when adding new features
+
+**Priority 2: Critical Unit Tests**
+- Only for complex algorithms or non-obvious logic
+- Data structures with intricate behavior (e.g., concurrent stores, graph algorithms)
+- Examples: `internal/inmemorystore`, `internal/nodeid`, `internal/bggoexpr`
+
+**Priority 3: Test Utilities** (`internal/testutil/`)
+- Harnesses for common testing patterns
+- Helpers for parsing and constructing test fixtures
+- Shared test infrastructure
+
+### When to Write Unit Tests
+
+Write unit tests when:
+- Testing complex algorithms in isolation (e.g., node address parsing, expression extraction)
+- Verifying thread-safety and concurrent behavior
+- Testing error conditions that are hard to trigger via integration tests
+- Performance-critical code where you need precise benchmarks
+
+**Do NOT write unit tests for:**
+- Simple data structure methods (getters/setters)
+- Code that just wires dependencies together
+- Logic that is fully covered by integration tests
+- Internal implementation details that might change
+
+### Test Execution
+
+```bash
+# Run all tests (integration + unit)
+make test
+
+# Watch tests during development
+make test-watch
+
+# Debug with verbose logging
+make test-debug  # Sets BGGO_TEST_LOGS=true
+```
+
+### Coverage Philosophy
+
+- **Low unit test coverage is acceptable** if integration tests cover the behavior
+- Packages with 0% coverage are often:
+  - Placeholder implementations (executor, scheduler)
+  - Simple interfaces or models
+  - Code tested at integration level
+- **Integration test coverage (67.5%) is the key metric**
+- Race detector enabled (`-race` flag) on all test runs
 
 ## Project Structure
 
