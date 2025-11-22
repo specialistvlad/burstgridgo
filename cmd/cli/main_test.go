@@ -10,7 +10,8 @@ import (
 )
 
 func TestRun(t *testing.T) {
-	t.Parallel()
+	// NOTE: Cannot use t.Parallel() at the top level because some subtests call os.Chdir()
+	// which modifies global process state and causes race conditions.
 
 	// --- Test Case Definitions ---
 	testCases := []struct {
@@ -94,7 +95,8 @@ func TestRun(t *testing.T) {
 	// --- Test Runner ---
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+			// NOTE: Cannot use t.Parallel() here because tests call os.Chdir()
+			// which modifies global process state
 			if tc.skip != nil {
 				t.Skip(*tc.skip)
 			}
