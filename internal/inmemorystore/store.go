@@ -1,5 +1,38 @@
-// Package inmemorystore provides a simple, thread-safe, in-memory
+// Package inmemorystore provides an ephemeral, thread-safe, in-memory
 // implementation of the nodestore.Store interface.
+//
+// # Purpose
+//
+// This package implements the node state store for local execution sessions.
+// It stores mutable execution state (status, outputs, errors) in memory using
+// sync.Map for fine-grained concurrent access without global lock contention.
+//
+// # Characteristics
+//
+//   - **Ephemeral:** Created fresh for each execution session, not persistent
+//   - **Thread-Safe:** Uses sync.Map for lock-free concurrent access in most cases
+//   - **High-Write:** Optimized for frequent state updates during parallel execution
+//   - **Fast Lookups:** O(1) average case for status/output/error retrieval
+//
+// # Concurrency Model
+//
+// Unlike inmemorytopology which uses RWMutex, this store uses sync.Map because:
+//   - **Write-Heavy Workload:** Executor constantly updates node status/output/error
+//   - **Independent Keys:** Each node's state is independent, enabling fine-grained locking
+//   - **Concurrent Reads + Writes:** Builder reads outputs while executor writes statuses
+//
+// sync.Map is optimized for this pattern where the key space is relatively stable
+// (all nodes known upfront) but values change frequently.
+//
+// # When to Use
+//
+// This implementation is suitable for:
+//   - Local development and testing
+//   - Single-machine execution
+//   - Workflows where all node state fits comfortably in memory
+//
+// For distributed execution or workflows requiring state persistence/recovery,
+// a different implementation (e.g., backed by Redis, etcd) would be needed.
 package inmemorystore
 
 import (
@@ -11,14 +44,22 @@ import (
 	"github.com/specialistvlad/burstgridgo/internal/nodestore"
 )
 
-// Store implements the nodestore.Store interface using sync.Map for
-// fine-grained, concurrent access without global lock contention.
+// Store is an in-memory implementation of nodestore.Store using sync.Map
+// for fine-grained concurrent access without global lock contention.
+//
+// The store maintains three independent sync.Maps:
+//   - states: Maps node ID strings to node.Status (Pending, Running, Completed, Failed)
+//   - outputs: Maps node ID strings to execution outputs (any type, typically map[string]interface{})
+//   - errors: Maps node ID strings to error objects for failed nodes
+//
+// Thread-safety is guaranteed by sync.Map's built-in concurrency control:
+//   - Multiple goroutines can safely read/write different keys simultaneously
+//   - Read-heavy workloads (after initial writes) are lock-free
+//   - Write contention on the same key is handled internally by sync.Map
 type Store struct {
-	// Each map stores a different aspect of the node's state.
-	// The key is always the nodeid.Address.String().
-	states  sync.Map // Stores node.Status
-	outputs sync.Map // Stores any
-	errors  sync.Map // Stores error
+	states  sync.Map // Key: node ID string, Value: node.Status
+	outputs sync.Map // Key: node ID string, Value: any (output data)
+	errors  sync.Map // Key: node ID string, Value: error
 }
 
 // New creates a new, empty in-memory node state store.

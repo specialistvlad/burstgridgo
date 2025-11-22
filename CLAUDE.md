@@ -60,8 +60,14 @@ BurstGridGo follows a **declarative execution pipeline** that transforms HCL con
 ### 3. Graph Construction
 - **Builder:** `internal/builder` - Transforms the model into an executable DAG
 - **Graph:** `internal/graph` - High-level stateful representation of the DAG during execution
-- **Topology Store:** `internal/inmemorytopology` - Manages DAG structure and node relationships
-- **Node Store:** `internal/inmemorystore` - Tracks node state during execution
+- **Topology Store:** `internal/topologystore` & `internal/inmemorytopology`
+  - Manages the **static DAG structure** (nodes and dependency edges)
+  - Write-once during graph construction, read-only during execution
+  - Enables scheduler to query which nodes are ready to run
+- **Node Store:** `internal/nodestore` & `internal/inmemorystore`
+  - Manages **dynamic execution state** (node status, outputs, errors)
+  - Continuously updated throughout execution as nodes complete
+  - Enables executor to track progress and builder to resolve expressions
 
 ### 4. Execution Phase
 - **Session:** `internal/session` & `internal/localsession` - Abstracts execution environment (local vs distributed)
@@ -80,7 +86,7 @@ BurstGridGo follows a **declarative execution pipeline** that transforms HCL con
 2. **Layered Architecture:** Clean separation between parsing, validation, graph building, and execution.
 3. **Type-Safe Model:** HCL is converted into strongly-typed Go structs before any evaluation happens.
 4. **Expression Isolation:** HCL expressions are only evaluated during graph construction, not during execution.
-5. **Store Pattern:** State and topology are managed via separate store interfaces for flexibility.
+5. **Dual-Store Pattern:** Separation of concerns between static DAG structure (topology store) and dynamic execution state (node store). This enables efficient concurrent access: read-heavy topology queries don't contend with frequent state updates.
 
 ## Key Concepts
 

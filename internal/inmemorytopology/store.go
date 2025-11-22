@@ -1,5 +1,28 @@
-// Package inmemorytopology provides a simple, thread-safe, in-memory
+// Package inmemorytopology provides an ephemeral, thread-safe, in-memory
 // implementation of the topologystore.Store interface.
+//
+// # Purpose
+//
+// This package implements the topology store for local execution sessions.
+// It stores the static DAG structure (nodes and dependencies) in memory using
+// Go maps, with a sync.RWMutex for thread-safe concurrent access.
+//
+// # Characteristics
+//
+//   - **Ephemeral:** Created fresh for each execution session, not persistent
+//   - **Thread-Safe:** All methods use appropriate locking (RLock for reads, Lock for writes)
+//   - **Write-Once-Read-Many:** Populated during graph construction, then read-only during execution
+//   - **Fast Lookups:** O(1) node retrieval and dependency lookups using hash maps
+//
+// # When to Use
+//
+// This implementation is suitable for:
+//   - Local development and testing
+//   - Single-machine execution
+//   - Workflows where the entire DAG fits comfortably in memory
+//
+// For distributed execution or workflows requiring topology persistence,
+// a different implementation (e.g., backed by a distributed store) would be needed.
 package inmemorytopology
 
 import (
@@ -12,12 +35,20 @@ import (
 	"github.com/specialistvlad/burstgridgo/internal/topologystore"
 )
 
-// Store implements the topologystore.Store interface using maps and a mutex
-// for thread-safe concurrent access.
+// Store is an in-memory implementation of topologystore.Store using Go maps
+// and sync.RWMutex for thread-safe concurrent access.
+//
+// The store maintains two internal maps:
+//   - nodes: Maps node ID strings to node.Node pointers (the DAG vertices)
+//   - deps: Maps node ID strings to sets of dependency ID strings (the DAG edges)
+//
+// Thread-safety is guaranteed by using sync.RWMutex:
+//   - Write operations (AddNode, AddDependency) use exclusive locks
+//   - Read operations (GetNode, AllNodes, DependenciesOf) use shared read locks
 type Store struct {
-	mu    sync.RWMutex
-	nodes map[string]*node.Node
-	deps  map[string]map[string]struct{} // Key: node ID, Value: set of dependency IDs
+	mu    sync.RWMutex                   // Protects concurrent access to nodes and deps
+	nodes map[string]*node.Node          // Map of node ID -> Node
+	deps  map[string]map[string]struct{} // Map of node ID -> set of dependency IDs it depends on
 }
 
 // New creates a new, empty in-memory topology store.

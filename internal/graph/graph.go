@@ -10,8 +10,25 @@ import (
 	"github.com/specialistvlad/burstgridgo/internal/topologystore"
 )
 
-// Manager provides a high-level, thread-safe interface to the execution graph
-// by composing and orchestrating lower-level storage backends.
+// Manager is the reference implementation of the Graph interface.
+//
+// It acts as a facade that composes topologystore.Store and nodestore.Store,
+// providing a unified API for the executor and scheduler to interact with both
+// structure and state without knowing about the underlying dual-store architecture.
+//
+// # Current Status: Stubbed
+//
+// This implementation currently returns placeholder values and logs debug messages.
+// A complete implementation would:
+//   - Store references to topology and node stores (currently unused)
+//   - Delegate structure queries to topology store (Node, DependenciesOf, AllNodes)
+//   - Delegate state queries/updates to node store (NodeStatus, MarkRunning, etc.)
+//   - Combine data from both stores for convenience methods like DependenciesOf
+//
+// # Thread-Safety
+//
+// Once implemented, thread-safety will be guaranteed by delegating to the underlying
+// thread-safe stores (topologystore and nodestore).
 type Manager struct{}
 
 // New creates a new graph manager.

@@ -325,10 +325,10 @@ sequenceDiagram
 - **internal/graph** - Stateful DAG representation, node state tracking
 - **internal/node** - Node definition (ID, type, config, dependencies, status)
 - **internal/nodeid** - Node addressing system (`<type>.<name>[index]`)
-- **internal/inmemorytopology** - In-memory topology storage (DAG structure)
-- **internal/inmemorystore** - In-memory node state storage (status, output, errors)
-- **internal/topologystore** - Topology store interface
-- **internal/nodestore** - Node store interface
+- **internal/topologystore** - Topology store interface (manages static DAG structure: nodes and dependencies)
+- **internal/inmemorytopology** - In-memory topology implementation (ephemeral, thread-safe, write-once-read-many)
+- **internal/nodestore** - Node store interface (manages dynamic execution state: status, output, errors)
+- **internal/inmemorystore** - In-memory node state storage (mutable during execution)
 
 ### Execution Engine
 - **internal/executor** - Executor interface (DAG execution orchestration)
@@ -360,10 +360,24 @@ Clean separation between parsing, validation, graph building, and execution phas
 - `builder.Builder` - Task building interface
 - `graph.Graph` - Graph operations interface
 
-### 3. Store Pattern
-State and topology managed via separate store interfaces for flexibility:
-- Topology (DAG structure) → `topologystore.TopologyStore`
-- Node state (status, output) → `nodestore.NodeStore`
+### 3. Dual-Store Pattern (Separation of Structure and State)
+The architecture separates static DAG structure from dynamic execution state using two independent stores:
+
+**Topology Store** (`topologystore.Store`)
+- **Purpose:** Manages the immutable DAG structure (nodes and dependency edges)
+- **Lifecycle:** Write-once during graph construction, read-many during execution
+- **Usage:** Scheduler queries dependencies to determine execution order
+- **Benefits:** Thread-safe concurrent reads without lock contention from state updates
+- **Implementation:** `internal/inmemorytopology` (ephemeral, in-memory)
+
+**Node Store** (`nodestore.Store`)
+- **Purpose:** Manages mutable execution state (status, outputs, errors)
+- **Lifecycle:** Continuously updated throughout execution
+- **Usage:** Executor updates node status, builder retrieves outputs for expression resolution
+- **Benefits:** State changes don't affect topology, enabling independent testing and flexibility
+- **Implementation:** `internal/inmemorystore` (ephemeral, in-memory)
+
+This separation ensures that structure queries (scheduler) don't interfere with frequent state updates (executor), improving concurrency and clarity.
 
 ### 4. Type-Safe Throughout
 HCL → strongly-typed Go structs → validated model → executable graph
