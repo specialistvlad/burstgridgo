@@ -7,8 +7,10 @@ import (
 	"net/http"
 
 	"github.com/specialistvlad/burstgridgo/internal/ctxlog"
+	"github.com/specialistvlad/burstgridgo/internal/localsession"
 	"github.com/specialistvlad/burstgridgo/internal/model"
 	"github.com/specialistvlad/burstgridgo/internal/registry"
+	"github.com/specialistvlad/burstgridgo/internal/session"
 )
 
 // App encapsulates the application's dependencies, configuration, and lifecycle.
@@ -56,25 +58,25 @@ func (app *App) Run() error {
 
 	// This section is now updated to use our new session-based architecture.
 	logger.Debug("Initializing session factory for a local run...")
-	// var factory session.SessionFactory = &localsession.SessionFactory{}
+	var factory session.SessionFactory = &localsession.SessionFactory{}
 
 	logger.Debug("Creating new execution session...")
-	// s, err := factory.NewSession(ctx, a.model, a.registry)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create execution session: %w", err)
-	// }
-	// defer s.Close(ctx)
+	s, err := factory.NewSession(app.ctx, app.grid, app.registry.Handlers())
+	if err != nil {
+		return fmt.Errorf("failed to create execution session: %w", err)
+	}
+	defer s.Close(app.ctx)
 
 	logger.Debug("Retrieving executor from session...")
-	// exec, err := s.GetExecutor()
-	// if err != nil {
-	// 	return fmt.Errorf("failed to get executor: %w", err)
-	// }
+	exec, err := s.GetExecutor()
+	if err != nil {
+		return fmt.Errorf("failed to get executor: %w", err)
+	}
 
-	// a.logger.Info("🚀 Starting execution...")
-	// if err := exec.Execute(ctx); err != nil {
-	// 	return fmt.Errorf("execution failed: %w", err)
-	// }
+	logger.Info("🚀 Starting execution...")
+	if err := exec.Execute(app.ctx); err != nil {
+		return fmt.Errorf("execution failed: %w", err)
+	}
 
 	logger.Info("🏁 Execution finished.")
 	return nil

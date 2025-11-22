@@ -33,3 +33,8 @@ func New(hndl *handlers.Handlers) *Registry {
 func (r *Registry) Runners() []*model.Runner {
 	return r.runnersRegistry
 }
+
+// Handlers returns the handlers registry.
+func (r *Registry) Handlers() *handlers.Handlers {
+	return &r.handlersRegistry
+}

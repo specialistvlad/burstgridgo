@@ -54,8 +54,11 @@ cd burstgridgo
 ```
 
 ### 🧠 Getting Started
-The **Makefile** is the main entry point for development tasks.  
-Run the following to see available commands:  
+Before diving into the code, familiarize yourself with the project architecture:
+- **[Architecture Overview](docs/architecture.md)** - Visual diagrams of the system architecture
+
+The **Makefile** is the main entry point for development tasks.
+Run the following to see available commands:
 ```sh
 make
 ```

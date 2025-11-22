@@ -56,8 +56,14 @@ If you want to explore, learn, or help me shape the engine as it evolves — sta
 
 👉 **Read the [Contributing Guide](CONTRIBUTING.md)** to understand how the project is structured, how to run it locally, and where your input can make the biggest difference.
 
-This stage is about **building the foundation** — architecture, testing, documentation, and modules.  
+This stage is about **building the foundation** — architecture, testing, documentation, and modules.
 Every contribution helps move BurstGridGo closer to becoming the platform I envision.
+
+## 📚 Documentation
+
+- **[Architecture Overview](docs/architecture.md)** - Comprehensive diagrams showing the system architecture, package dependencies, and execution pipeline
+- **[Project Guide (CLAUDE.md)](CLAUDE.md)** - Development guide with commands, testing strategy, and architectural decisions
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 
 ## License
 burstgridgo is licensed under the MIT License.

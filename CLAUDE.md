@@ -8,6 +8,8 @@ BurstGridGo is a declarative automation and orchestration engine built in Go. It
 
 **Status:** MVP Stage 1 - API and architecture are not yet stable and subject to breaking changes.
 
+**Architecture:** See [docs/architecture.md](docs/architecture.md) for comprehensive diagrams showing the system architecture, package dependencies, and execution pipeline.
+
 ## Common Commands
 
 ### Building and Running
